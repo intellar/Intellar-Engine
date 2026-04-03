@@ -55,12 +55,15 @@ void i2cTask(void *pvParameters) {
   // Wait for setup() to complete its initial I2C burst on Core 1
   vTaskDelay(pdMS_TO_TICKS(1000)); 
 
+
+
   Serial.println(">>> TASK START: I2C (Core 0)");
 
-  // On vérifie la présence de l'OLED (0x3C) une seule fois
+  vTaskDelay(pdMS_TO_TICKS(1000)); 
+  Serial.println(">>> TASK START: I2C (Core 0)");
+
   bool oledEnabled = isDevicePresent(0x3C);
   if (oledEnabled) {
-      Serial.println("INFO: OLED initializing from Task...");
       eyeAnim.begin();
   }
   
@@ -68,11 +71,11 @@ void i2cTask(void *pvParameters) {
   unsigned long lastAnimTime = millis();
   unsigned long nextInterval = 3000; 
 
-  const TickType_t xFrequency = pdMS_TO_TICKS(20); // 50Hz
-  TickType_t xLastWakeTime;
+  const TickType_t xFrequency = pdMS_TO_TICKS(33); 
+  // INITIALISATION UNIQUE ICI
+  TickType_t xLastWakeTime = xTaskGetTickCount();
 
   for (;;) {
-    xLastWakeTime = xTaskGetTickCount();
     // Process registered I2C modules
     for (auto module : i2cModules) {
         if (module->isAlive()) {
@@ -187,6 +190,7 @@ void setup() {
 
   // Stack set to 4096 to prevent allocation failure on internal RAM during BLE/LCD operations
   BaseType_t res = xTaskCreatePinnedToCore(i2cTask, "I2C Task", 4096, NULL, 1, NULL, 0);
+
   if (res != pdPASS) {
       Serial.println("CRITICAL: Failed to create I2C Task!");
   } else {
@@ -263,7 +267,7 @@ void loop() {
       frameCount++;
   }
 
-  delay(5); 
+  // Rely on FRAME_DELAY_MS for loop pacing, no additional delay needed.
 
   if (now - lastFpsTime >= 1000) {
     float fps = frameCount * 1000.0f / (now - lastFpsTime);

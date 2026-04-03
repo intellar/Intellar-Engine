@@ -4,9 +4,12 @@
 #include "LCD.h"
 
 namespace Drivers {
+    #define LEFT_EYE 0
+    #define RIGHT_EYE 1
+
     // Objets globaux partagés
-    extern LGFX_Sprite _sprite_right;
-    extern LGFX_Sprite _sprite_left;
+    extern LGFX_Sprite _eyeSprites[2][2];
+    extern int _backBufferIdx;
     extern bool _isInitialized;
     extern bool _showingFace;
 
@@ -23,13 +26,6 @@ namespace Drivers {
     extern Scanline _circularScanlines[240];
     extern uint16_t* _robotEyeBuffer;
     extern bool _robotEyeLoaded;
-
-    // Performance
-    extern unsigned long time_draw_gmeter_total;
-    extern unsigned long time_push_gmeter_total;
-    extern unsigned long time_draw_horizon_total;
-    extern unsigned long time_push_horizon_total;
-    extern int frame_count_for_timing;
 
     // Helpers internes
     void _pushDMA(LGFX_Sprite& sprite, lgfx::LGFX_Device& tft);

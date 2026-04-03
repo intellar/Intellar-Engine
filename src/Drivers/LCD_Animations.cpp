@@ -25,9 +25,6 @@ namespace Drivers {
             if (*targetBuffer) {
                 file.read((uint8_t*)*targetBuffer, fSize);
             // Perform byte swapping for binary compatibility with display driver
-            for (size_t i = 0; i < fSize / 2; i++) {
-                (*targetBuffer)[i] = __builtin_bswap16((*targetBuffer)[i]);
-            }
             *targetWidth = (abs((long)fSize - 576000) < 4096) ? 1200 : (fSize / 480);
                 *targetLoaded = true;
             }
@@ -42,9 +39,6 @@ namespace Drivers {
             _robotEyeBuffer = (uint16_t*)ps_malloc(245000);
             if (_robotEyeBuffer) {
                 file.read((uint8_t*)_robotEyeBuffer, 245000);
-                for (size_t i = 0; i < 122500; i++) {
-                    _robotEyeBuffer[i] = __builtin_bswap16(_robotEyeBuffer[i]);
-                }
                 _robotEyeLoaded = true;
             }
             file.close();

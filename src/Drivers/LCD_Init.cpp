@@ -44,8 +44,11 @@ namespace Drivers {
     lgfx::LGFX_Device& _tft_left = _tft_l_dev;
     lgfx::LGFX_Device& _tft_right = _tft_r_dev;
 
-    LGFX_Sprite _sprite_right = LGFX_Sprite(&_tft_right);
-    LGFX_Sprite _sprite_left  = LGFX_Sprite(&_tft_left);
+    LGFX_Sprite _eyeSprites[2][2] = {
+        { LGFX_Sprite(&_tft_left), LGFX_Sprite(&_tft_left) },
+        { LGFX_Sprite(&_tft_right), LGFX_Sprite(&_tft_right) }
+    };
+    int _backBufferIdx = 0;
 
     bool _isInitialized = false;
     Scanline _circularScanlines[240];
@@ -95,15 +98,19 @@ namespace Drivers {
         _tft_right.invertDisplay(true);
 #endif
 
-        _sprite_right.setColorDepth(16);
-        _sprite_left.setColorDepth(16);
-
+        for (int i = 0; i < 2; i++) {
+            _sprites_left[i].setColorDepth(16);
+            _sprites_right[i].setColorDepth(16);
+            _sprites_left[i].setPsram(false);
+            _sprites_right[i].setPsram(false);
+            
 #if defined(SCREEN_GC9A01_DUAL)
-        _sprite_left.createSprite(240, 240);
-        _sprite_right.createSprite(240, 240);
+            _sprites_left[i].createSprite(240, 240);
+            _sprites_right[i].createSprite(240, 240);
 #else
-        _sprite_right.createSprite(240, 240);
+            _sprites_right[i].createSprite(240, 240);
 #endif
+        }
 
         _isInitialized = true;
         clearLCD();
@@ -117,7 +124,10 @@ namespace Drivers {
 
     void clearLCD() {
         if (!_isInitialized) return;
-        _sprite_right.fillSprite(TFT_BLACK);
-        _sprite_left.fillSprite(TFT_BLACK);
+        for (int eye = 0; eye < 2; eye++) {
+            for (int buf = 0; buf < 2; buf++) {
+                _eyeSprites[eye][buf].fillSprite(TFT_BLACK);
+            }
+        }
     }
 }
