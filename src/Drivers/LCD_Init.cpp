@@ -98,18 +98,14 @@ namespace Drivers {
         _tft_right.invertDisplay(true);
 #endif
 
-        for (int i = 0; i < 2; i++) {
-            _sprites_left[i].setColorDepth(16);
-            _sprites_right[i].setColorDepth(16);
-            _sprites_left[i].setPsram(false);
-            _sprites_right[i].setPsram(false);
-            
-#if defined(SCREEN_GC9A01_DUAL)
-            _sprites_left[i].createSprite(240, 240);
-            _sprites_right[i].createSprite(240, 240);
-#else
-            _sprites_right[i].createSprite(240, 240);
-#endif
+        // Initialisation du Double Buffering en PSRAM
+        for (int eye = 0; eye < 2; eye++) {
+            for (int buf = 0; buf < 2; buf++) {
+                _eyeSprites[eye][buf].setPsram(true); // Force l'usage de la PSRAM
+                _eyeSprites[eye][buf].setColorDepth(16);
+                _eyeSprites[eye][buf].createSprite(240, 240);
+                _eyeSprites[eye][buf].setSwapBytes(false); // Gestion manuelle lors du chargement
+            }
         }
 
         _isInitialized = true;
