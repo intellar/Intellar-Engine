@@ -22,7 +22,6 @@ namespace Sensors {
 
     private:
         int _lpn, _int;
-        bool _connected = false;
         static ToFModule* _instance;
     };
 }

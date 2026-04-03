@@ -15,8 +15,8 @@ namespace Interface {
             // Mode "Idle" : On fait des saccades aléatoires toutes les 1 à 3 secondes
             if (millis() - _lastSaccadeTime > 2000) {
                 _lastSaccadeTime = millis();
-                _saccadeX = (random(-100, 101) / 100.0f) * 0.6f; // On limite l'amplitude
-                _saccadeY = (random(-100, 101) / 100.0f) * 0.4f;
+                _saccadeX = (random(-100, 101) / 100.0f) * 0.8f; // On limite l'amplitude
+                _saccadeY = (random(-100, 101) / 100.0f) * 0.8f;
             }
             finalTargetX = _saccadeX;
             finalTargetY = _saccadeY;

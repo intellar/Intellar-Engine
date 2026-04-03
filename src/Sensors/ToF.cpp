@@ -19,30 +19,43 @@ namespace Sensors {
     ToFModule::ToFModule(int lpnPin, int intPin) : _lpn(lpnPin), _int(intPin) {}
 
     bool ToFModule::begin() {
-        Serial.println("ToF: Starting hardware initialization...");
+        // 1. Hard Reset (XSHUT / LPN)
         if (_lpn >= 0) {
+            Serial.println("ToF: Hard Reset...");
             pinMode(_lpn, OUTPUT);
-            digitalWrite(_lpn, LOW);
-            delay(100);
-            digitalWrite(_lpn, HIGH);
-            delay(600); 
+            digitalWrite(_lpn, LOW); // Mise en Reset (Arrêt)
+            delay(100); 
+            digitalWrite(_lpn, HIGH); // Activation
+            delay(600); // Temps vital pour le bootloader
         }
 
-        Wire.setTimeOut(100);
-        Wire.setClock(100000);
+        if (_int >= 0) {
+            pinMode(_int, INPUT_PULLUP);
+        }
+
+        // Initialisation I2C : Timeout augmenté pour absorber les collisions avec l'OLED
+        Wire.setTimeOut(500); 
+        Wire.setClock(100000); 
+
+        Serial.println("INFO: Tentative de connexion VL53L5CX (Driver SparkFun)...");
 
         if (myImager.begin(0x29, Wire) == false) {
-            Serial.println("ToF: I2C communication error or firmware load failure");
+            Serial.println("ERREUR: Capteur VL53L5CX non detecte !");
             _connected = false;
             return false;
         } else {
             myImager.setWireMaxPacketSize(128); 
             _connected = true;
-            Wire.setClock(400000);
+            Serial.println("INFO: VL53L5CX (SparkFun) operationnel!");
             
+            // Configuration à 100kHz pour garantir l'intégrité des commandes
             myImager.setResolution(8*8);
             myImager.setRangingFrequency(15);
-            if (myImager.startRanging()) Serial.println("ToF: Ranging started successfully");
+
+            // Une fois le firmware et la config validés, on repasse en mode rapide
+            Wire.setClock(400000); 
+            
+            myImager.startRanging();
             return true;
         }
     }

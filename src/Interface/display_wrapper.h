@@ -8,7 +8,9 @@ extern Adafruit_SSD1306 display;
 const int G_COLOR_WHITE = SSD1306_WHITE;
 const int G_COLOR_BLACK = SSD1306_BLACK;
 inline void g_init_display() {
-    if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    // Pass 'false' as 4th argument (periphBegin) to prevent the library 
+    // from calling Wire.begin() and resetting our custom I2C pins (18/8).
+    if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C, true, false)) {
         Serial.println(F("SSD1306 allocation failed"));
     }
 }

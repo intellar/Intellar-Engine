@@ -52,11 +52,15 @@ bool isDevicePresent(uint8_t address) {
 
 /** Dedicated task for I2C communication (ToF, OLED, Sensors) running on Core 0 */
 void i2cTask(void *pvParameters) {
-  Serial.println("INFO: Tâche I2C (IMU+OLED) démarrée sur le Coeur 0.");
+  // Wait for setup() to complete its initial I2C burst on Core 1
+  vTaskDelay(pdMS_TO_TICKS(1000)); 
+
+  Serial.println(">>> TASK START: I2C (Core 0)");
 
   // On vérifie la présence de l'OLED (0x3C) une seule fois
   bool oledEnabled = isDevicePresent(0x3C);
   if (oledEnabled) {
+      Serial.println("INFO: OLED initializing from Task...");
       eyeAnim.begin();
   }
   
@@ -64,12 +68,12 @@ void i2cTask(void *pvParameters) {
   unsigned long lastAnimTime = millis();
   unsigned long nextInterval = 3000; 
 
-  // Define fixed periodicity for the I2C task (50Hz)
-  TickType_t xLastWakeTime = xTaskGetTickCount();
-  const TickType_t xFrequency = pdMS_TO_TICKS(20);
+  const TickType_t xFrequency = pdMS_TO_TICKS(20); // 50Hz
+  TickType_t xLastWakeTime;
 
   for (;;) {
-    // Synchronized peripheral updates
+    xLastWakeTime = xTaskGetTickCount();
+    // Process registered I2C modules
     for (auto module : i2cModules) {
         if (module->isAlive()) {
             module->update();
@@ -95,8 +99,7 @@ void i2cTask(void *pvParameters) {
 }
 
 void setup() {
-  Core::init(I2C_SDA, I2C_SCL);
-  Serial.begin(115200);
+  Core::init(I2C_SDA, I2C_SCL); // Note: Serial.begin is already inside Core::init
 
   if(!LittleFS.begin()){
       Serial.println("ERREUR: Montage LittleFS échoué !");
@@ -115,16 +118,21 @@ void setup() {
       }
   }
 
-  // Initialize I2C modules (ToF instantiation can be enabled here)
+
+  i2cModules.push_back(&Sensors::ToFModule::instance(TOF_LPN, TOF_INT));
+
   for (auto m : i2cModules) {
-      if (!m->begin()) Serial.println("ERROR: Echec initialisation d'un module I2C");
+      if (m->begin()) {
+          Serial.printf("INFO: Module %s prêt.\n", m->getName());
+      } else {
+          Serial.printf("ERROR: Échec begin() sur %s\n", m->getName());
+      }
   }
-  Wire.setClock(400000); 
 
   Drivers::initLCD(TFT_CS, TFT_DC, TFT_RST, TFT_LED);
   Drivers::loadRobotEyeRes("/image_giant.bin");
   
-  ENGINE_STATE.activeFaceId = 0; 
+  ENGINE_STATE.activeFaceId = 5; 
 
   if (ENGINE_STATE.animFiles.size() >= 1) {
       Drivers::setAnimation(ENGINE_STATE.animFiles[0].c_str(), Drivers::DisplayIndex::LEFT);
@@ -177,8 +185,13 @@ void setup() {
 
   delay(100);
 
-  xTaskCreatePinnedToCore(
-      i2cTask, "I2C Task", 8192, NULL, 4, NULL, 0);
+  // Stack set to 4096 to prevent allocation failure on internal RAM during BLE/LCD operations
+  BaseType_t res = xTaskCreatePinnedToCore(i2cTask, "I2C Task", 4096, NULL, 1, NULL, 0);
+  if (res != pdPASS) {
+      Serial.println("CRITICAL: Failed to create I2C Task!");
+  } else {
+      Serial.println("INFO: I2C Task successfully created on Core 0.");
+  }
 }
 
 void loop() {
@@ -266,7 +279,9 @@ void loop() {
         }
     }
 
+
     if (Sensors::ToFModule::instance().isAlive()) {
+        
         Serial.printf("ToF Status: [OK] | Pts Valides: %d | Moyenne: %u mm | Centre: %d mm\n", 
                       validPoints, validPoints > 0 ? sumDist/validPoints : 0, ENGINE_STATE.tofGrid[28]);
         Serial.printf("ToF Raw Grid (0,1,2,3,4,5,6,7): %d, %d, %d, %d, %d, %d, %d, %d\n",
