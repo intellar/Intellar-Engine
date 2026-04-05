@@ -21,6 +21,6 @@ namespace Interface {
         unsigned long _lastSaccadeTime;
         float _saccadeX, _saccadeY;
         
-        const float LERP_SPEED = 0.2f;
+        const float LERP_SPEED = 0.1f;
     };
 }
