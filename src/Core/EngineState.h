@@ -14,6 +14,7 @@ namespace Core {
         std::atomic<float> imuPitch{0.0f};
         volatile float imuAccel[3] = {0.0f, 0.0f, 0.0f};
         volatile float touchStrengths[4] = {0.0f};
+        std::atomic<bool> oledShowBars{false};
         
         // Statut Système (Consommateurs)
         std::atomic<bool> btConnected{false};

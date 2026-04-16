@@ -187,15 +187,6 @@ void EyeAnimation::playAnimation(int animationIndex) {
         case BLINK_SHORT: blink(12); break;
         case HAPPY: happyEye(); break;
         case SLEEP: sleep(); break;
-        case SACCADE_RANDOM:
-            resetEyes(true);
-            for(int i=0; i<20; i++) { 
-                int dir_x = random(-1, 2);
-                int dir_y = random(-1, 2);
-                saccade(dir_x, dir_y); delay(1);
-                saccade(-dir_x, -dir_y); delay(1);     
-            }
-            break;
         default: break;
     }
 }

@@ -37,29 +37,37 @@ namespace Drivers {
         
         display.clearDisplay();
 
-        // Affichage de 4 grands rectangles pour visualiser l'état des pads tactiles
+        // Affichage de 4 bandes verticales pour visualiser la force du touchpad
         if (touchStrengths) {
-            const int rect_width = 30;
-            const int rect_height = 60;
-            const int gap = 2;
-            const int start_x = (SCREEN_WIDTH - (4 * rect_width + 3 * gap)) / 2; // Centrage du bloc
-            const int start_y = (SCREEN_HEIGHT - rect_height) / 2;
+            const int bar_w = 20;      // Largeur de chaque bande
+            const int bar_h = 42;      // Hauteur maximale de la bande (ajusté pour l'écran 64px)
+            const int gap = 10;        // Espace entre les bandes
+            const int start_x = (SCREEN_WIDTH - (4 * bar_w + 3 * gap)) / 2; // Centrage horizontal
+            const int start_y = 4;     // Marge haute
+
+            display.setTextSize(1);
+            display.setTextColor(SSD1306_WHITE);
 
             for (int i = 0; i < 4; i++) {
-                int x_pos = start_x + i * (rect_width + gap);
+                int x_pos = start_x + i * (bar_w + gap);
                 float strength = touchStrengths[i];
                 if (strength < 0.0f) strength = 0.0f;
                 if (strength > 1.0f) strength = 1.0f;
 
-                int fill_height = (int)(strength * rect_height);
+                int fill_height = (int)(strength * bar_h);
                 
-                // Dessin du cadre (Hollow rectangle) - Adapte pour Adafruit
-                display.drawRect(x_pos, start_y, rect_width, rect_height, SSD1306_WHITE);
+                // Dessin du contour de la bande
+                display.drawRect(x_pos, start_y, bar_w, bar_h, SSD1306_WHITE);
                 
+                // Remplissage progressif du bas vers le haut
                 if (fill_height > 0) {
-                    // Remplissage depuis le bas (Filled rectangle) - Adapte pour Adafruit
-                    display.fillRect(x_pos, start_y + (rect_height - fill_height), rect_width, fill_height, SSD1306_WHITE);
+                    display.fillRect(x_pos, start_y + (bar_h - fill_height), bar_w, fill_height, SSD1306_WHITE);
                 }
+
+                // Ajout d'une étiquette P1, P2... sous chaque barre
+                display.setCursor(x_pos + 4, start_y + bar_h + 6);
+                display.print("P");
+                display.print(i + 1);
             }
         }
 

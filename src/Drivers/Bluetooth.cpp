@@ -24,7 +24,6 @@ static const char* OLED_ANIM_NAMES[] = {
   "Blink Short",
   "Happy",
   "Sleep",
-  "Saccade Random"
 };
 static const int OLED_ANIM_COUNT = sizeof(OLED_ANIM_NAMES) / sizeof(OLED_ANIM_NAMES[0]);
 
@@ -33,6 +32,10 @@ class ServerCallbacks: public BLEServerCallbacks {
 public:
     void onConnect(BLEServer* pServer) {
       _deviceConnected = true;
+      // Déclenche l'envoi de la configuration système et de la liste des fichiers
+      // dès qu'un appareil se connecte. Cela permet de peupler l'interface 
+      // immédiatement sans attendre une commande spécifique.
+      ENGINE_STATE.shouldSendFileList.store(true);
     }
 
     void onDisconnect(BLEServer* pServer) {
@@ -90,23 +93,40 @@ namespace Drivers {
 
             // Prioritize file list request over status updates
             if (ENGINE_STATE.shouldSendFileList.load()) {
-                String json = "{\"files\":[";
+                // Étape 1 : Configuration système et Modes OLED
+                String json = "{\"config\":" + ENGINE_STATE.sysConfig + 
+                             ",\"oled_modes\":[{\"id\":80,\"name\":\"Yeux (Anim)\"},{\"id\":81,\"name\":\"Touchpad (Debug)\"}]}";
+                _pCharacteristic->setValue(json.c_str());
+                _pCharacteristic->notify();
+                delay(20);
+
+                // Étape 2 : Liste des personnages (Faces)
+                json = "{\"faces\":[";
+                json += "{\"id\":0,\"name\":\"Chat Neutre\"},{\"id\":1,\"name\":\"Chat Joyeux\"},";
+                json += "{\"id\":2,\"name\":\"Chat Triste\"},{\"id\":3,\"name\":\"Chat Etonne\"},";
+                json += "{\"id\":4,\"name\":\"Chat Colere\"}]}";
+                _pCharacteristic->setValue(json.c_str());
+                _pCharacteristic->notify();
+                delay(20);
+
+                // Étape 3 : Liste des animations OLED intégrées
+                json = "{\"oled_anims\":[";
+                for(int i=0; i<OLED_ANIM_COUNT; i++) {
+                    if(i > 0) json += ",";
+                    json += "{\"id\":" + String(100 + i) + ",\"name\":\"" + String(OLED_ANIM_NAMES[i]) + "\"}";
+                }
+                json += "]}";
+                _pCharacteristic->setValue(json.c_str());
+                _pCharacteristic->notify();
+                delay(20);
+
+                // Étape 4 : Liste des fichiers sur la carte SD
+                json = "{\"files\":[";
                 for(size_t i=0; i<ENGINE_STATE.animFiles.size(); i++) {
                     json += "{\"id\":" + String(10 + i) + ",\"name\":\"" + ENGINE_STATE.animFiles[i] + "\"}";
                     if(i < ENGINE_STATE.animFiles.size() - 1) json += ",";
                 }
-                json += "]";
-                
-                // Ajout de la liste des animations OLED
-                json += ",\"oled_anims\":[";
-                for(int i=0; i<OLED_ANIM_COUNT; i++) {
-                    if(i > 0) json += ",";
-                    // ID 100+i pour les animations OLED
-                    json += "{\"id\":" + String(100 + i) + ",\"name\":\"" + String(OLED_ANIM_NAMES[i]) + "\"}";
-                }
-                json += "]"; // Ferme le tableau oled_anims
-                
-                json += ", \"config\":" + ENGINE_STATE.sysConfig + "}";
+                json += "]}";
                 
                 _pCharacteristic->setValue(json.c_str());
                 _pCharacteristic->notify();
@@ -117,7 +137,7 @@ namespace Drivers {
             char buffer[256];
             // Construction du JSON : {"oled":true,"fps_oled":10,...}
             snprintf(buffer, sizeof(buffer), 
-                "{\"oled\":%s,\"lcd_l\":%s,\"lcd_r\":%s,\"touch\":%s,\"imu\":%s,\"tof\":%s,\"touchpad\":%s,\"fps_oled\":%d,\"fps_lcd_l\":%d,\"fps_lcd_r\":%d,\"face\":%d}",
+                "{\"oled\":%s,\"lcd_l\":%s,\"lcd_r\":%s,\"touch\":%s,\"imu\":%s,\"tof\":%s,\"touchpad\":%s,\"fps_oled\":%d,\"fps_lcd_l\":%d,\"fps_lcd_r\":%d,\"face\":%d,\"oled_mode\":%d}",
                 oled ? "true" : "false",
                 lcd_left ? "true" : "false",
                 lcd_right ? "true" : "false",
@@ -128,7 +148,8 @@ namespace Drivers {
                 fps_oled,
                 fps_lcd_l,
                 fps_lcd_r,
-                ENGINE_STATE.activeFaceId.load() // Utiliser .load() pour obtenir la valeur atomique
+                ENGINE_STATE.activeFaceId.load(), // Utiliser .load() pour obtenir la valeur atomique
+                ENGINE_STATE.oledShowBars ? 81 : 80
             );
 
             _pCharacteristic->setValue(buffer);

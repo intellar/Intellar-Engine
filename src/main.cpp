@@ -55,16 +55,14 @@ void i2cTask(void *pvParameters) {
   // Wait for setup() to complete its initial I2C burst on Core 1
   vTaskDelay(pdMS_TO_TICKS(1000)); 
 
-
-
-  Serial.println(">>> TASK START: I2C (Core 0)");
-
-  vTaskDelay(pdMS_TO_TICKS(1000)); 
   Serial.println(">>> TASK START: I2C (Core 0)");
 
   bool oledEnabled = isDevicePresent(0x3C);
   if (oledEnabled) {
-      eyeAnim.begin();
+      // On utilise initOLED pour activer le flag _oledReady nécessaire au mode Debug
+      Drivers::initOLED();
+      // On initialise aussi les yeux pour être prêt à switcher
+      eyeAnim.resetEyes(true);
   }
   
   static int demo_anim_index = 0;
@@ -83,20 +81,27 @@ void i2cTask(void *pvParameters) {
         }
     }
 
-    if (ENGINE_STATE.oledCommand != -1) {
-        if (oledEnabled) eyeAnim.playAnimation(ENGINE_STATE.oledCommand);
-        ENGINE_STATE.oledCommand = -1;
-        lastAnimTime = millis();
-        nextInterval = 3000;
+    if (oledEnabled) {
+        if (ENGINE_STATE.oledShowBars) {
+            // Mode Debug : Affiche les bandes du touchpad
+            Drivers::updateOLED(ENGINE_STATE.imuRoll, ENGINE_STATE.imuPitch, 
+                                ENGINE_STATE.btConnected, (const float*)ENGINE_STATE.touchStrengths);
+        } else {
+            // Mode Yeux : Gestion des animations
+            if (ENGINE_STATE.oledCommand != -1) {
+                eyeAnim.playAnimation(ENGINE_STATE.oledCommand);
+                ENGINE_STATE.oledCommand = -1;
+                lastAnimTime = millis();
+                nextInterval = 3000;
+            }
+            else if (millis() - lastAnimTime > nextInterval) {
+                eyeAnim.playAnimation(demo_anim_index);
+                demo_anim_index = (demo_anim_index + 1) % MAX_ANIMATIONS;
+                lastAnimTime = millis();
+                nextInterval = 1000;
+            }
+        }
     }
-    // Automatic demo cycle
-    else if (millis() - lastAnimTime > nextInterval) {
-        if (oledEnabled) eyeAnim.playAnimation(demo_anim_index);
-        demo_anim_index = (demo_anim_index + 1) % MAX_ANIMATIONS;
-        lastAnimTime = millis();
-        nextInterval = 1000;
-    }
-
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
 }
@@ -122,7 +127,8 @@ void setup() {
   }
 
 
-  i2cModules.push_back(&Sensors::ToFModule::instance(TOF_LPN, TOF_INT));
+  // ToF désactivé volontairement (non branché)
+  // i2cModules.push_back(&Sensors::ToFModule::instance(TOF_LPN, TOF_INT)); 
 
   for (auto m : i2cModules) {
       if (m->begin()) {
@@ -135,13 +141,14 @@ void setup() {
   Drivers::initLCD(TFT_CS, TFT_DC, TFT_RST, TFT_LED);
   Drivers::loadRobotEyeRes("/image_giant.bin");
   
-  ENGINE_STATE.activeFaceId = 5; 
+  ENGINE_STATE.activeFaceId = 0; // On démarre directement sur le mode "Chat" (0-4)
 
+  // if (ENGINE_STATE.animFiles.size() >= 1) {
+  //     Drivers::setAnimation(ENGINE_STATE.animFiles[0].c_str(), Drivers::DisplayIndex::LEFT);
+  // }
   if (ENGINE_STATE.animFiles.size() >= 1) {
-      Drivers::setAnimation(ENGINE_STATE.animFiles[0].c_str(), Drivers::DisplayIndex::LEFT);
-  }
-  if (ENGINE_STATE.animFiles.size() >= 2) {
-      Drivers::setAnimation(ENGINE_STATE.animFiles[1].c_str(), Drivers::DisplayIndex::RIGHT);
+      // On charge la première animation disponible sur l'écran droit
+      Drivers::setAnimation(ENGINE_STATE.animFiles[0].c_str(), Drivers::DisplayIndex::RIGHT);
   }
 
   Drivers::Touchpad::init();
@@ -175,7 +182,7 @@ void setup() {
     ENGINE_STATE.sysConfig += "\"touch\":false,";
   #endif
 
-  #if defined(HAS_TOF)
+  #if defined(HAS_TOF) && 0
     ENGINE_STATE.sysConfig += "\"tof\":true,";
   #else
     ENGINE_STATE.sysConfig += "\"tof\":false,";
@@ -233,6 +240,9 @@ void loop() {
       Serial.printf("CMD BT: Face ID changed to %d\n", btCmd);
   }
 
+  if (btCmd == 80) ENGINE_STATE.oledShowBars = false;      // Commande via menu : Mode Yeux
+  else if (btCmd == 81) ENGINE_STATE.oledShowBars = true;  // Commande via menu : Mode Touchpad (Debug)
+
   if (btCmd == 99) ENGINE_STATE.shouldSendFileList = true;
   else if (btCmd >= 100 && btCmd < 200) ENGINE_STATE.oledCommand = btCmd - 100;
   else if (btCmd >= 200 && btCmd < 300) {
@@ -260,7 +270,9 @@ void loop() {
           robotEyeLogic.update(tx_eye, ty_eye, valid);
           Drivers::showRobotEyes(robotEyeLogic.getX(), robotEyeLogic.getY(), (const uint16_t*)ENGINE_STATE.tofGrid);
       } else if (ENGINE_STATE.activeFaceId >= 0 && ENGINE_STATE.activeFaceId <= 4) {
-          Drivers::showCatFace(targetCatIndex, targetSingeIndex);
+          // On met l'index 0 (neutre/éteint) sur l'écran gauche (1er arg)
+          // et le chat interactif sur l'écran droit (2ème arg)
+          Drivers::showCatFace(0, targetCatIndex);
       } else {
           Drivers::updateLCD();
       }
@@ -269,11 +281,14 @@ void loop() {
 
   // Rely on FRAME_DELAY_MS for loop pacing, no additional delay needed.
 
-  if (now - lastFpsTime >= 1000) {
+  // On envoie le statut soit toutes les secondes, soit immédiatement si une demande de synchro (FileList) est pendante
+  bool syncPending = ENGINE_STATE.shouldSendFileList.load();
+  if (syncPending || (now - lastFpsTime >= 1000)) {
     float fps = frameCount * 1000.0f / (now - lastFpsTime);
-    Serial.printf("System Real FPS: %.1f\n", fps);
     
-    // Grid analysis for diagnostics
+    if (!syncPending) {
+        Serial.printf("System Real FPS: %.1f\n", fps);
+        // Grid analysis for diagnostics
     int validPoints = 0;
     uint32_t sumDist = 0;
     for(int i=0; i<64; i++) {
@@ -282,7 +297,6 @@ void loop() {
             sumDist += ENGINE_STATE.tofGrid[i];
         }
     }
-
 
     if (Sensors::ToFModule::instance().isAlive()) {
         
@@ -295,6 +309,7 @@ void loop() {
                       ENGINE_STATE.tofGrid[6], ENGINE_STATE.tofGrid[7]);
     } else {
         Serial.println("ToF Status: [ERROR] Capteur absent ou firmware non charge");
+    }
     }
 
     uint32_t currentOledCounter = ENGINE_STATE.oledFrameCounter;
@@ -312,7 +327,7 @@ void loop() {
     int current_fps = (int)fps; 
 
 #if defined(SCREEN_GC9A01_DUAL)
-    st_lcd_l = true; st_lcd_r = true;
+    st_lcd_l = false; st_lcd_r = true; // Écran gauche désactivé logiciellement
     fps_lcd_l = current_fps; fps_lcd_r = current_fps;
 #elif defined(SCREEN_GC9A01) || defined(SCREEN_ILI9341)
     st_lcd_r = true; fps_lcd_r = current_fps;
@@ -320,7 +335,10 @@ void loop() {
 
     Drivers::Bluetooth::updateStatus(st_oled, st_lcd_l, st_lcd_r, st_touch, st_imu, st_tof, st_touchpad, actual_oled_fps, fps_lcd_l, fps_lcd_r);
 
-    frameCount = 0;
-    lastFpsTime = now;
+    // On ne reset les compteurs FPS que si c'était une mise à jour régulière (1s)
+    if (!syncPending) {
+        frameCount = 0;
+        lastFpsTime = now;
+    }
   }
 }
