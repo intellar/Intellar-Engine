@@ -24,6 +24,11 @@ static const char* OLED_ANIM_NAMES[] = {
   "Blink Short",
   "Happy",
   "Sleep",
+  "Saccade",
+  "Curious",
+  "Sad",
+  "Bored",
+  "Look At"
 };
 static const int OLED_ANIM_COUNT = sizeof(OLED_ANIM_NAMES) / sizeof(OLED_ANIM_NAMES[0]);
 
