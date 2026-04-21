@@ -10,13 +10,15 @@ namespace Core {
         
         // Données Capteurs (Producteurs)
         volatile uint16_t tofGrid[64] = {0};
-        std::atomic<float> imuRoll{0.0f};
-        std::atomic<float> imuPitch{0.0f};
-        volatile float imuAccel[3] = {0.0f, 0.0f, 0.0f};
+        std::atomic<float> imuRoll[2]{{0.0f}, {0.0f}};
+        std::atomic<float> imuPitch[2]{{0.0f}, {0.0f}};
+        volatile float imuAccel[2][3] = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
+        volatile float imuGyro[2][3] = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
         volatile float touchStrengths[4] = {0.0f};
         std::atomic<bool> oledShowBars{false};
         
         // Statut Système (Consommateurs)
+        std::atomic<bool> buttonPressed{false};
         std::atomic<bool> btConnected{false};
         std::atomic<bool> shouldSendFileList{false};
         std::atomic<uint32_t> oledFrameCounter{0};

@@ -27,11 +27,11 @@ namespace Drivers {
         LGFX_Sprite& spriteL = _eyeSprites[LEFT_EYE][_backBufferIdx];
         LGFX_Sprite& spriteR = _eyeSprites[RIGHT_EYE][_backBufferIdx];
 
-        float roll = ENGINE_STATE.imuRoll;
-        float pitch = ENGINE_STATE.imuPitch;
-        float ax = ENGINE_STATE.imuAccel[0];
-        float ay = ENGINE_STATE.imuAccel[1];
-        float az = ENGINE_STATE.imuAccel[2];
+        float roll = ENGINE_STATE.imuRoll[0].load();
+        float pitch = ENGINE_STATE.imuPitch[0].load();
+        float ax = ENGINE_STATE.imuAccel[0][0];
+        float ay = ENGINE_STATE.imuAccel[0][1];
+        float az = ENGINE_STATE.imuAccel[0][2];
 
 #if defined(SCREEN_GC9A01_DUAL)
         drawGmeter(spriteL, ax, ay, az);
