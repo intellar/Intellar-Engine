@@ -50,6 +50,15 @@ bool isDevicePresent(uint8_t address) {
     return (Wire.endTransmission() == 0);
 }
 
+/** Global utility to update all registered I2C modules (sensors/drivers) */
+void updateAllSensors() {
+    for (auto module : i2cModules) {
+        if (module != nullptr && module->isAlive()) {
+            module->update();
+        }
+    }
+}
+
 /** Dedicated task for I2C communication (ToF, OLED, Sensors) running on Core 0 */
 void i2cTask(void *pvParameters) {
   // Wait for setup() to complete its initial I2C burst on Core 1
@@ -75,16 +84,13 @@ void i2cTask(void *pvParameters) {
 
   for (;;) {
     // Process registered I2C modules
-    for (auto module : i2cModules) {
-        if (module->isAlive()) {
-            module->update();
-        }
-    }
+    // This also allows animations called within this task to trigger updates
+    updateAllSensors();
 
     if (oledEnabled) {
         if (ENGINE_STATE.oledShowBars) {
             // Mode Debug : Affiche les bandes du touchpad
-            Drivers::updateOLED(ENGINE_STATE.imuRoll, ENGINE_STATE.imuPitch, 
+            Drivers::updateOLED(ENGINE_STATE.imuRoll[0].load(), ENGINE_STATE.imuPitch[0].load(), 
                                 ENGINE_STATE.btConnected, (const float*)ENGINE_STATE.touchStrengths);
         } else {
             // Mode Yeux : Gestion des animations

@@ -10,6 +10,15 @@ static const int REF_EYE_WIDTH = 40;
 static const int REF_SPACE_BETWEEN_EYE = 10;
 static const int REF_CORNER_RADIUS = 10;
 
+// Helper pour attendre tout en maintenant les filtres IMU à jour
+void safeDelay(unsigned long ms) {
+    unsigned long start = millis();
+    while (millis() - start < ms) {
+        updateAllSensors();
+        delay(1); 
+    }
+}
+
 EyeAnimation::EyeAnimation() {
     corner_radius = REF_CORNER_RADIUS;
 }
@@ -66,6 +75,7 @@ void EyeAnimation::blink(int speed) {
         corner_radius = min(mapped_radius, current_h / 2);
         left_eye.width += 3; right_eye.width += 3;
         drawFrame(); delay(1);
+        drawFrame(); safeDelay(1);
     }
     for(int i=0; i<3; i++) {
         left_eye.height += speed; right_eye.height += speed;
@@ -74,6 +84,7 @@ void EyeAnimation::blink(int speed) {
         corner_radius = min(mapped_radius, current_h / 2);
         left_eye.width -= 3; right_eye.width -= 3;
         drawFrame(); delay(1);
+        drawFrame(); safeDelay(1);
     }
     resetEyes();
 }
@@ -112,8 +123,10 @@ void EyeAnimation::happyEye() {
             G_COLOR_BLACK);
         offset -= 2;
         g_update_display(); delay(1);
+        g_update_display(); safeDelay(1);
     }
     delay(1000);
+    safeDelay(1000);
     resetEyes();
 }
 
@@ -363,11 +376,21 @@ void EyeAnimation::bored() {
 
         g_update_display();
 
-        // Micro-clignement aléatoire quand très endormi
-        if (wakefulness < 0.2f && millis() - lastBlinkTime > nextBlinkInterval) {
-            blink(14);
+        // Micro-clignement "lourd" local : évite le glitch du saut à 40px (resetEyes)
+        if (wakefulness < 0.25f && (millis() - lastBlinkTime > nextBlinkInterval)) {
+            int resumeH_L = left_eye.height;
+            int resumeH_R = right_eye.height;
+            
+            // Fermeture rapide depuis la position actuelle
+            left_eye.height = 2; right_eye.height = 2;
+            drawFrame();
+            delay(60); // Temps de fermeture (paupière lourde)
+            
+            left_eye.height = resumeH_L; right_eye.height = resumeH_R;
+            drawFrame();
+
             lastBlinkTime = millis();
-            nextBlinkInterval = 3000 + random(4000);
+            nextBlinkInterval = 4000 + random(5000);
         }
 
         delay(16);
