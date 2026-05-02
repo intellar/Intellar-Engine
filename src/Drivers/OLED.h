@@ -4,6 +4,7 @@
 namespace Drivers {
     void initOLED();
     void updateOLED(float roll, float pitch, bool btConnected, const float* touchStrengths);
+    void updateOLEDPerformance();
 }
 
 #endif

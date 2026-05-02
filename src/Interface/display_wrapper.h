@@ -2,6 +2,7 @@
 #define DISPLAY_WRAPPER_H
 #include <Wire.h>
 #include "../config.h"
+#include "../Core/EngineState.h"
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 extern Adafruit_SSD1306 display;
@@ -15,7 +16,10 @@ inline void g_init_display() {
     }
 }
 inline void g_clear_display() { display.clearDisplay(); }
-inline void g_update_display() { display.display(); }
+inline void g_update_display() {
+    display.display();
+    ENGINE_STATE.oledFrameCounter.fetch_add(1, std::memory_order_relaxed);
+}
 inline void g_draw_filled_round_rect(int x, int y, int w, int h, int r, int color) {
     display.fillRoundRect(x, y, w, h, r, color);
 }

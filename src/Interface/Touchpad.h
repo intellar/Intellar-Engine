@@ -24,7 +24,7 @@ namespace Interface {
         // Retourne la valeur maximale observée (pour debug)
         int getMax(uint8_t index);
 
-        // Retourne true si une interaction a été détectée depuis le démarrage (pour le statut système)
+        // True si les voies capacitives ont été calibrées (matériel prêt pour le statut système BLE)
         bool isDetected();
     }
 }

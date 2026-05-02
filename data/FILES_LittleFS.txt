@@ -1,0 +1,28 @@
+Contenu conseille du dossier `data/` (puis flash FS : `pio run -e gc9a01 -t buildfs && pio run -e gc9a01 -t uploadfs`)
+
+Firmware gc9a01 : le GPIO rétroéclairage TFT est `-DTFT_BL` dans platformio.ini (valeur par défaut 46).
+Sans le bon GPIO, les deux ronds GC9a01 restent noir même si la logique dessine correctement.
+
+-------------------------------------------------------------------------------
+1) RobotEye (mode TFT selection id 5)
+   Nom exact sur la carte : image_giant.bin
+   Taille attendue par le firmware : 245000 octets (RGB565 oeil panorama)
+
+-------------------------------------------------------------------------------
+2) Strips TFT "chat" / personnages (visages systeme 0-4 et BLE fichiers id 10+)
+   Extensions : tous les *.bin a la RACINE LittleFS sont listes comme assets,
+   sauf tout nom dont le label contient (sans tenir du casse) :
+     image_giant
+   Pour un ordre de chargement AU BOOT lisible depuis le serie :
+     - fichiers dont le nom contient "expression" en premier,
+     puis par ordre alphabetique du chemin.
+   Formats usuels pour un strip de 5 poses :
+     Largeur totale typique 1200 px (= 5 x 240), hauteur 240, RGB565
+     soit 576000 octets (avec la tolerance ±4096 utilisee dans le driver).
+   Les noms ne sont PAS obligatoires : expression-chat.bin, monkey.bin,
+   avatar.bin, etc. fonctionnent. Evite uniquement les noms "image_giant".
+
+-------------------------------------------------------------------------------
+3) Optionnel hors strip
+   Tout autre *.bin sera propose au dashboard tant qu'il passe les filtres
+   ci-dessus ; il doit quand meme ressembler a une bande drawable (voir driver).

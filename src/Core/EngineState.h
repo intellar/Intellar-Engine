@@ -8,6 +8,9 @@ namespace Core {
         // État de l'Interface
         // 0–4 Chat/sprite strip, 5 RobotEye TFT; défaut Chat neutre (aligné avec setup)
         std::atomic<int> activeFaceId{0};
+        // Strip LCD après chargement BLE d’un fichier : -1 = suivre preset (targetCatIndex / 0 gauche), ≥0 = colonne fixe (souvent 0)
+        std::atomic<int> lcdExprLeft{-1};
+        std::atomic<int> lcdExprRight{-1};
         
         // Données Capteurs (Producteurs)
         volatile uint16_t tofGrid[64] = {0};
@@ -16,7 +19,8 @@ namespace Core {
         volatile float imuAccel[2][3] = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
         volatile float imuGyro[2][3] = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};
         volatile float touchStrengths[4] = {0.0f};
-        std::atomic<bool> oledShowBars{false};
+        /** 0 = yeux (anim), 1 = barres touchpad, 2 = écran performance */
+        std::atomic<uint8_t> oledUiMode{0};
         
         // Statut Système (Consommateurs)
         std::atomic<bool> buttonPressed{false};
@@ -31,6 +35,13 @@ namespace Core {
         // Commandes OLED
         std::atomic<int> oledCommand{-1};
         std::atomic<bool> oledDemoMode{true};
+
+        // Diagnostics mode performance OLED (mis à jour ~1 Hz depuis Core 1)
+        std::atomic<float> perfDbgFps{0.f};
+        std::atomic<uint32_t> perfHeapFree{0};
+        std::atomic<uint32_t> perfHeapMin{0};
+        std::atomic<uint32_t> perfPsramFree{0};
+        std::atomic<uint32_t> perfUptimeSec{0};
 
         // Singleton Instance
         static EngineState& instance() {

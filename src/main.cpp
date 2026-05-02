@@ -15,6 +15,28 @@
 #include <freertos/FreeRTOS.h>
 #include <LittleFS.h>
 #include <vector>
+#include <algorithm>
+#include <cstring>
+
+static bool fileNameReserved(const String& low) {
+    return low.indexOf("image_giant") >= 0;
+}
+
+static bool preferExpressionFilename(const String& path) {
+    String l(path);
+    l.toLowerCase();
+    return l.indexOf("expression") >= 0;
+}
+
+static void sortAnimFilesStable() {
+    auto& v = ENGINE_STATE.animFiles;
+    std::stable_sort(v.begin(), v.end(), [](const String& a, const String& b) {
+        bool pa = preferExpressionFilename(a);
+        bool pb = preferExpressionFilename(b);
+        if (pa != pb) return pa && !pb;
+        return strcmp(a.c_str(), b.c_str()) < 0;
+    });
+}
 
 // --- Configuration Hardware et Hub ---
 static std::vector<Interface::IntellarModule*> i2cModules;
@@ -88,10 +110,12 @@ void i2cTask(void *pvParameters) {
     updateAllSensors();
 
     if (oledEnabled) {
-        if (ENGINE_STATE.oledShowBars) {
-            // Mode Debug : Affiche les bandes du touchpad
-            Drivers::updateOLED(ENGINE_STATE.imuRoll[0].load(), ENGINE_STATE.imuPitch[0].load(), 
-                                ENGINE_STATE.btConnected, (const float*)ENGINE_STATE.touchStrengths);
+        const uint8_t oledMode = ENGINE_STATE.oledUiMode.load();
+        if (oledMode == 1) {
+            Drivers::updateOLED(ENGINE_STATE.imuRoll[0].load(), ENGINE_STATE.imuPitch[0].load(),
+                                ENGINE_STATE.btConnected.load(), (const float*)ENGINE_STATE.touchStrengths);
+        } else if (oledMode == 2) {
+            Drivers::updateOLEDPerformance();
         } else {
             // Mode Yeux : Gestion des animations
             if (ENGINE_STATE.oledCommand != -1) {
@@ -123,13 +147,24 @@ void setup() {
       File file = root.openNextFile();
       while(file){
           String fname = file.name();
-          if(fname.endsWith(".bin") && fname.indexOf("expression-") >= 0) {
-              if (!fname.startsWith("/")) fname = "/" + fname;
-              ENGINE_STATE.animFiles.push_back(fname);
-              Serial.printf("INFO: Animation trouvee: %s\n", fname.c_str());
+          if (!fname.endsWith(".bin")) {
+              file = root.openNextFile();
+              continue;
           }
+          String low = fname;
+          low.toLowerCase();
+          if (fileNameReserved(low)) {
+              file = root.openNextFile();
+              continue;
+          }
+          if (!fname.startsWith("/")) fname = "/" + fname;
+          ENGINE_STATE.animFiles.push_back(fname);
+          Serial.printf("INFO: Fichier strip/anim: %s\n", fname.c_str());
           file = root.openNextFile();
       }
+      sortAnimFilesStable();
+      Serial.printf("INFO: Strip TFT: %u fichier(s); ordre trie (expression puis A-Z).\n",
+                    (unsigned)ENGINE_STATE.animFiles.size());
   }
 
 
@@ -145,16 +180,18 @@ void setup() {
   }
 
   Drivers::initLCD(TFT_CS, TFT_DC, TFT_RST, TFT_LED);
+
   Drivers::loadRobotEyeRes("/image_giant.bin");
   
   // activeFaceId défaut = 0 (Chat neutre) dans Core/EngineState.h
 
-  // if (ENGINE_STATE.animFiles.size() >= 1) {
-  //     Drivers::setAnimation(ENGINE_STATE.animFiles[0].c_str(), Drivers::DisplayIndex::LEFT);
-  // }
-  if (ENGINE_STATE.animFiles.size() >= 1) {
-      // Droit en dual ; mono-écran lit ce même buffer dans showCatFace (#else LCD.cpp)
-      Drivers::setAnimation(ENGINE_STATE.animFiles[0].c_str(), Drivers::DisplayIndex::RIGHT);
+  if (!ENGINE_STATE.animFiles.empty()) {
+      const char* first = ENGINE_STATE.animFiles[0].c_str();
+      Serial.printf("INFO: Charge strip TFT principal: %s\n", first);
+      // Une seule copie atlas en RAM : l’œil gauche utilise le même buffer dans showCatFace si pas de strip BLE gauche (évite PSRAM trop pleine).
+      Drivers::setAnimation(first, Drivers::DisplayIndex::RIGHT);
+  } else {
+      Serial.println("WARN: Aucun .bin strip dans LittleFS → visages TFT inactifs. Voir data/FILES_LittleFS.txt + uploadfs.");
   }
 
   Interface::Touchpad::init();
@@ -219,7 +256,7 @@ void loop() {
   
   unsigned long now = millis();
 
-  ENGINE_STATE.btConnected = Drivers::Bluetooth::isConnected();
+  ENGINE_STATE.btConnected.store(Drivers::Bluetooth::isConnected());
   
   if (now - lastTouchUpdate >= TOUCH_UPDATE_MS) {
       Interface::Touchpad::update();
@@ -235,6 +272,8 @@ void loop() {
   if (btCmd != -1 && btCmd >= 0 && btCmd <= 5) {
       persistentFace = btCmd;
       ENGINE_STATE.activeFaceId = btCmd;
+      ENGINE_STATE.lcdExprLeft = -1;
+      ENGINE_STATE.lcdExprRight = -1;
       Serial.printf("CMD BT: Face ID changed to %d\n", btCmd);
   }
 
@@ -247,14 +286,28 @@ void loop() {
       else if (Interface::Touchpad::isTouched(2)) { persistentFace = 4; ENGINE_STATE.activeFaceId = 4; targetCatIndex = 4; }
       else if (Interface::Touchpad::isTouched(3)) { persistentFace = 3; ENGINE_STATE.activeFaceId = 3; targetCatIndex = 3; }
   } else if (faceNow >= 0 && faceNow <= 4) {
-      if (Interface::Touchpad::isTouched(0)) targetCatIndex = 1;
-      else if (Interface::Touchpad::isTouched(1)) targetCatIndex = 2;
-      else if (Interface::Touchpad::isTouched(2)) targetCatIndex = 4;
-      else if (Interface::Touchpad::isTouched(3)) targetCatIndex = 3;
+      if (Interface::Touchpad::isTouched(0)) {
+          targetCatIndex = 1;
+          if (ENGINE_STATE.lcdExprRight.load() >= 0) ENGINE_STATE.lcdExprRight = 1;
+          if (ENGINE_STATE.lcdExprLeft.load() >= 0) ENGINE_STATE.lcdExprLeft = 1;
+      } else if (Interface::Touchpad::isTouched(1)) {
+          targetCatIndex = 2;
+          if (ENGINE_STATE.lcdExprRight.load() >= 0) ENGINE_STATE.lcdExprRight = 2;
+          if (ENGINE_STATE.lcdExprLeft.load() >= 0) ENGINE_STATE.lcdExprLeft = 2;
+      } else if (Interface::Touchpad::isTouched(2)) {
+          targetCatIndex = 4;
+          if (ENGINE_STATE.lcdExprRight.load() >= 0) ENGINE_STATE.lcdExprRight = 4;
+          if (ENGINE_STATE.lcdExprLeft.load() >= 0) ENGINE_STATE.lcdExprLeft = 4;
+      } else if (Interface::Touchpad::isTouched(3)) {
+          targetCatIndex = 3;
+          if (ENGINE_STATE.lcdExprRight.load() >= 0) ENGINE_STATE.lcdExprRight = 3;
+          if (ENGINE_STATE.lcdExprLeft.load() >= 0) ENGINE_STATE.lcdExprLeft = 3;
+      }
   }
 
-  if (btCmd == 80) ENGINE_STATE.oledShowBars = false;      // Commande via menu : Mode Yeux
-  else if (btCmd == 81) ENGINE_STATE.oledShowBars = true;  // Commande via menu : Mode Touchpad (Debug)
+  if (btCmd == 80) ENGINE_STATE.oledUiMode = 0;   // OLED : yeux (anim)
+  else if (btCmd == 81) ENGINE_STATE.oledUiMode = 1;  // OLED : barres touchpad
+  else if (btCmd == 82) ENGINE_STATE.oledUiMode = 2;  // OLED : performance (FPS / mémoire / état)
 
   if (btCmd == 99) ENGINE_STATE.shouldSendFileList = true;
   else if (btCmd >= 100 && btCmd < 200) ENGINE_STATE.oledCommand = btCmd - 100;
@@ -264,11 +317,17 @@ void loop() {
   }
   else if (btCmd >= 30 && btCmd < 50) {
       int idx = btCmd - 30;
-      if (idx < ENGINE_STATE.animFiles.size()) Drivers::setAnimation(ENGINE_STATE.animFiles[idx].c_str(), Drivers::DisplayIndex::RIGHT);
+      if (idx < ENGINE_STATE.animFiles.size()) {
+          Drivers::setAnimation(ENGINE_STATE.animFiles[idx].c_str(), Drivers::DisplayIndex::RIGHT);
+          ENGINE_STATE.lcdExprRight = 0;
+      }
   }
   else if (btCmd >= 10 && btCmd < 30) {
       int idx = btCmd - 10;
-      if (idx < ENGINE_STATE.animFiles.size()) Drivers::setAnimation(ENGINE_STATE.animFiles[idx].c_str(), Drivers::DisplayIndex::LEFT);
+      if (idx < ENGINE_STATE.animFiles.size()) {
+          Drivers::setAnimation(ENGINE_STATE.animFiles[idx].c_str(), Drivers::DisplayIndex::LEFT);
+          ENGINE_STATE.lcdExprLeft = 0;
+      }
   }
 
   // Main display refresh logic (Target: 30 FPS)
@@ -277,18 +336,32 @@ void loop() {
   if (now - lastRefresh >= FRAME_DELAY_MS) { 
       lastRefresh += FRAME_DELAY_MS; 
 
-      if (ENGINE_STATE.activeFaceId == 5) {
+      const int fid = ENGINE_STATE.activeFaceId.load();
+      const bool wantRobot = (fid == 5);
+      const bool wantChat = (fid >= 0 && fid <= 4);
+
+      if (wantRobot && Drivers::isRobotEyeResourceReady()) {
           float tx_eye, ty_eye;
           bool valid = Sensors::ToFModule::getToFTarget(tx_eye, ty_eye);
           robotEyeLogic.update(tx_eye, ty_eye, valid);
           Drivers::showRobotEyes(robotEyeLogic.getX(), robotEyeLogic.getY(), (const uint16_t*)ENGINE_STATE.tofGrid);
-      } else if (ENGINE_STATE.activeFaceId >= 0 && ENGINE_STATE.activeFaceId <= 4) {
-          // On met l'index 0 (neutre/éteint) sur l'écran gauche (1er arg)
-          // et le chat interactif sur l'écran droit (2ème arg)
-          Drivers::showCatFace(0, targetCatIndex);
+      } else if (wantRobot || wantChat) {
+          /* Face RobotEye sélectionnée mais /image_giant.bin absent/invalide → sinon écrans tout noirs. */
+          int stripL = ENGINE_STATE.lcdExprLeft.load();
+          int stripR = ENGINE_STATE.lcdExprRight.load();
+          int leftCol = stripL >= 0 ? stripL : 0;
+          int rightCol = stripR >= 0 ? stripR : targetCatIndex;
+          if (Drivers::haveCatStripAtlas()) {
+              Drivers::showCatFace(leftCol, rightCol);
+          } else {
+              Drivers::updateLCD(); // IMU au moins quelque chose d’entièrement noir (G‑meter/horyzon ont du contraste)
+          }
       } else {
           Drivers::updateLCD();
       }
+#if defined(SCREEN_ILI9341) && defined(TOUCH_CS)
+      Drivers::drawTftTouchFeedback();
+#endif
       frameCount++;
   }
 
@@ -297,7 +370,17 @@ void loop() {
   // On envoie le statut soit toutes les secondes, soit immédiatement si une demande de synchro (FileList) est pendante
   bool syncPending = ENGINE_STATE.shouldSendFileList.load();
   if (syncPending || (now - lastFpsTime >= 1000)) {
-    float fps = frameCount * 1000.0f / (now - lastFpsTime);
+    float fps = frameCount * 1000.0f / (float)std::max(1u, (unsigned)(now - lastFpsTime));
+
+    ENGINE_STATE.perfDbgFps.store(fps);
+    ENGINE_STATE.perfHeapFree.store(ESP.getFreeHeap());
+    ENGINE_STATE.perfHeapMin.store(ESP.getMinFreeHeap());
+#if defined(BOARD_HAS_PSRAM)
+    ENGINE_STATE.perfPsramFree.store(ESP.getFreePsram());
+#else
+    ENGINE_STATE.perfPsramFree.store(0);
+#endif
+    ENGINE_STATE.perfUptimeSec.store(now / 1000u);
     
     if (!syncPending) {
         Serial.printf("System Real FPS: %.1f\n", fps);
@@ -331,19 +414,26 @@ void loop() {
     lastOledCounter = currentOledCounter;
 
     bool st_oled = (actual_oled_fps > 0);
-    bool st_lcd_l = false, st_lcd_r = false, st_touch = false, st_imu = false;
-    bool st_tof = Sensors::ToFModule::instance().isAlive(); 
-    bool st_touchpad = Interface::Touchpad::isDetected(); 
+    bool st_lcd_l = false, st_lcd_r = false, st_imu = false;
+    bool st_tof = Sensors::ToFModule::instance().isAlive();
+    bool st_touchpad = Interface::Touchpad::isDetected();
+    /** Tactile TFT (XPT2046 / ILI9341); touchpad capacitif séparé. */
+    const bool st_touch = Drivers::tftTouchSubsystemReady();
     
     int fps_lcd_l = 0;
     int fps_lcd_r = 0;
     int current_fps = (int)fps; 
 
 #if defined(SCREEN_GC9A01_DUAL)
-    st_lcd_l = false; st_lcd_r = true; // Écran gauche désactivé logiciellement
-    fps_lcd_l = current_fps; fps_lcd_r = current_fps;
+    // Même santé pour les deux ronds si la boucle TFT tourne (évite FPS affichés + voyant gauche rouge).
+    const bool lcdActiveDual = (current_fps > 0);
+    st_lcd_l = lcdActiveDual;
+    st_lcd_r = lcdActiveDual;
+    fps_lcd_l = current_fps;
+    fps_lcd_r = current_fps;
 #elif defined(SCREEN_GC9A01) || defined(SCREEN_ILI9341)
-    st_lcd_r = true; fps_lcd_r = current_fps;
+    st_lcd_r = (current_fps > 0);
+    fps_lcd_r = current_fps;
 #endif
 
     Drivers::Bluetooth::updateStatus(st_oled, st_lcd_l, st_lcd_r, st_touch, st_imu, st_tof, st_touchpad, actual_oled_fps, fps_lcd_l, fps_lcd_r);

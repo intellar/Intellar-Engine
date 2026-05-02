@@ -12,7 +12,8 @@ static int currentValues[NUM_TOUCH_PINS] = {0};
 static int minValues[NUM_TOUCH_PINS] = {0};
 static int maxValues[NUM_TOUCH_PINS] = {0};
 static bool touchStates[NUM_TOUCH_PINS] = {false};
-static bool anyTouchDetected = false;
+/** True après calibration réussie (présence du sous-système pour le statut BLE / dashboard). */
+static bool subsystemReady = false;
 
 /** Detection threshold as percentage of baseline increase */
 static const float TOUCH_THRESHOLD_PERCENT = 0.30f;
@@ -34,6 +35,14 @@ namespace Interface {
                 baselines[i] = sum / samples;
                 Serial.printf("INFO: Touchpad %d (IO%d) Baseline: %d\n", i+1, touchPins[i], baselines[i]);
             }
+            subsystemReady = true;
+            for (int i = 0; i < NUM_TOUCH_PINS; i++) {
+                if (baselines[i] <= 0) {
+                    subsystemReady = false;
+                    Serial.printf("WARN: Touchpad %d baseline invalide\n", i + 1);
+                    break;
+                }
+            }
         }
 
         void update() {
@@ -49,7 +58,6 @@ namespace Interface {
                 
                 if (val > threshold) {
                     touchStates[i] = true;
-                    anyTouchDetected = true; 
                 } else {
                     touchStates[i] = false;
                     
@@ -101,7 +109,7 @@ namespace Interface {
         }
 
         bool isDetected() {
-            return anyTouchDetected;
+            return subsystemReady;
         }
     }
 }

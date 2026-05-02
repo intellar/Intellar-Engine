@@ -99,8 +99,8 @@ namespace Drivers {
             // Prioritize file list request over status updates
             if (ENGINE_STATE.shouldSendFileList.load()) {
                 // Étape 1 : Configuration système et Modes OLED
-                String json = "{\"config\":" + ENGINE_STATE.sysConfig + 
-                             ",\"oled_modes\":[{\"id\":80,\"name\":\"Yeux (Anim)\"},{\"id\":81,\"name\":\"Touchpad (Debug)\"}]}";
+                String                 json = "{\"config\":" + ENGINE_STATE.sysConfig + 
+                             ",\"oled_modes\":[{\"id\":80,\"name\":\"Yeux (Anim)\"},{\"id\":81,\"name\":\"Touchpad (Debug)\"},{\"id\":82,\"name\":\"Performance\"}]}";
                 _pCharacteristic->setValue(json.c_str());
                 _pCharacteristic->notify();
                 delay(20);
@@ -139,6 +139,13 @@ namespace Drivers {
                 return; 
             }
 
+            int oled_mode_notify = 80;
+            switch (ENGINE_STATE.oledUiMode.load()) {
+                case 1: oled_mode_notify = 81; break;
+                case 2: oled_mode_notify = 82; break;
+                default: oled_mode_notify = 80; break;
+            }
+
             char buffer[256];
             // Construction du JSON : {"oled":true,"fps_oled":10,...}
             snprintf(buffer, sizeof(buffer), 
@@ -153,8 +160,8 @@ namespace Drivers {
                 fps_oled,
                 fps_lcd_l,
                 fps_lcd_r,
-                ENGINE_STATE.activeFaceId.load(), // Utiliser .load() pour obtenir la valeur atomique
-                ENGINE_STATE.oledShowBars ? 81 : 80
+                ENGINE_STATE.activeFaceId.load(),
+                oled_mode_notify
             );
 
             _pCharacteristic->setValue(buffer);

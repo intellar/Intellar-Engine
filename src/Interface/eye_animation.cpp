@@ -5,6 +5,11 @@
 // Import de la fonction définie dans main.cpp
 extern void updateAllSensors();
 
+/** OLED mode 0 = animations yeux ; 1 touchpad, 2 perf — sortir des boucles longues sinon le changement BLE ne prend effet pas. */
+static inline bool oledAllowsEyeAnimations() {
+    return ENGINE_STATE.oledUiMode.load() == 0;
+}
+
 static const int REF_EYE_HEIGHT = 40;
 static const int REF_EYE_WIDTH = 40;
 static const int REF_SPACE_BETWEEN_EYE = 10;
@@ -294,6 +299,7 @@ void EyeAnimation::bored() {
     unsigned long nextBlinkInterval = 2000 + random(3000);
 
     while (ENGINE_STATE.oledCommand == BORED || ENGINE_STATE.oledCommand == -1) {
+        if (!oledAllowsEyeAnimations()) break;
         if (ENGINE_STATE.oledCommand != -1 && ENGINE_STATE.oledCommand != BORED) break;
 
         // Permettre aux IMU de se mettre à jour pendant l'animation
@@ -405,6 +411,7 @@ void EyeAnimation::lookat() {
     const int MAX_MOVE_Y = 6;
 
     while (ENGINE_STATE.oledCommand == LOOKAT || ENGINE_STATE.oledCommand == -1) {
+        if (!oledAllowsEyeAnimations()) break;
         if (ENGINE_STATE.oledCommand != -1 && ENGINE_STATE.oledCommand != LOOKAT) break;
 
         // Permettre aux IMU de se mettre à jour pendant l'animation

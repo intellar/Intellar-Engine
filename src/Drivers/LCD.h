@@ -35,10 +35,23 @@ namespace Drivers {
     void showCatFace(int leftIndex, int rightIndex);
     void loadRobotEyeRes(const char* filename); // Charge l'image de l'œil géant
     void showRobotEyes(float normX, float normY, const uint16_t* grid = nullptr); // Dessine l'œil avec décalage + debug ToF
+    /** `image_giant.bin` présent avec la taille attendue pour showRobotEyes */
+    bool isRobotEyeResourceReady();
+    /** Au moins un strip chat chargé depuis LittleFS / BLE */
+    bool haveCatStripAtlas();
     void reportTimings();
     
     // Access to the raw object if needed for custom drawing
     lgfx::LGFX_Device& getTFT();
+
+    /** Tactile TFT (SPI, ex. XPT2046) — uniquement avec SCREEN_ILI9341 et TOUCH_CS en build_flags. */
+    bool tftTouchSubsystemReady();
+#if defined(SCREEN_ILI9341) && defined(TOUCH_CS)
+    /** Point jaune sous le doigt / stylet (debug tactile). */
+    void drawTftTouchFeedback();
+    /** Stylet corrigé (miroir XPT / écran) — pour future UI tactile. */
+    bool getIli9341TouchScreenPos(int16_t* outX, int16_t* outY);
+#endif
 }
 
 #endif
