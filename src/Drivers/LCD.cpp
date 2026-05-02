@@ -82,7 +82,8 @@ namespace Drivers {
         _finalizeDMA();
         _backBufferIdx = (_backBufferIdx == 0) ? 1 : 0;
 #else
-        _drawFaceToSprite(spriteR, _animBufferLeft, _animLeftLoaded, _widthLeft, leftIndex);
+        // Buffer droit comme en dual ; l’expression pilotée est rightIndex (ex. touchpad/BT)
+        _drawFaceToSprite(spriteR, _animBufferRight, _animRightLoaded, _widthRight, rightIndex);
         spriteR.pushSprite(0, 0);
 #endif
     }

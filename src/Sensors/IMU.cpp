@@ -4,34 +4,31 @@
 namespace Sensors {
 
 // ─── Registres QMI8658 ────────────────────────────────────────────────────────
-static constexpr uint8_t REG_RESET  = 0x60;
-static constexpr uint8_t REG_CTRL1  = 0x02;
-static constexpr uint8_t REG_CTRL2  = 0x03;
-static constexpr uint8_t REG_CTRL3  = 0x04;
-static constexpr uint8_t REG_CTRL7  = 0x08;
-static constexpr uint8_t REG_DATA   = 0x35; // Premier registre de données accel
+static constexpr uint8_t REG_RESET = 0x60;
+static constexpr uint8_t REG_CTRL1 = 0x02;
+static constexpr uint8_t REG_CTRL2 = 0x03;
+static constexpr uint8_t REG_CTRL3 = 0x04;
+static constexpr uint8_t REG_CTRL7 = 0x08;
 
-// Facteurs de conversion — doivent correspondre à la config CTRL2/CTRL3
-// CTRL2 = 0x05 → ±2g   → 16384 LSB/g
-// CTRL3 = 0x04 → ±512dps → 64 LSB/dps
+// Facteurs de conversion
+// CTRL2 = 0x05 → ±2g    → 16384 LSB/g
+// CTRL3 = 0x54 → ±512dps → 64 LSB/dps
 static constexpr float ACCEL_SCALE = 1.f / 16384.f;
 static constexpr float GYRO_SCALE  = 1.f / 64.f;
 // ─────────────────────────────────────────────────────────────────────────────
 
 bool IMU::begin(uint8_t addr) {
     _addr = addr;
-    
-    
-    
+
     // Soft reset
     Wire.beginTransmission(_addr);
     Wire.write(REG_RESET); Wire.write(0xB0);
     if (Wire.endTransmission() != 0) return false;
-    delay(50);
+    delay(100);
 
-    // CTRL1 : auto-increment activé
+    // CTRL1 : auto-increment activé, little-endian
     Wire.beginTransmission(_addr);
-    Wire.write(REG_CTRL1); Wire.write(0x60);
+    Wire.write(REG_CTRL1); Wire.write(0x40);
     Wire.endTransmission();
 
     // CTRL2 : accel ±2g, ODR 235 Hz
@@ -49,52 +46,42 @@ bool IMU::begin(uint8_t addr) {
     Wire.write(REG_CTRL7); Wire.write(0x03);
     Wire.endTransmission();
 
-    _ready = true;
-    Serial.printf("[IMU] QMI8658 @ 0x%02X Initialisé\n", addr);
+    delay(50); // Attendre stabilisation ODR
 
+    // Purge des premiers samples invalides
+    for (int i = 0; i < 30; i++) { _readRaw(); delay(5); }
 
-    Wire.beginTransmission(_addr);
-    Wire.write(REG_CTRL3);
-    Wire.endTransmission(false);
-    Wire.requestFrom(_addr, (uint8_t)1);
-    Serial.printf("[CTRL3 readback 0x%02X] = 0x%02X\n", _addr, Wire.read());
-
-
-    Wire.beginTransmission(_addr);
-    Wire.write(0x00);
-    Wire.endTransmission(false);
-    Wire.requestFrom(_addr, (uint8_t)1);
-    uint8_t whoami = Wire.read();
-    Serial.printf("[IMU] WHO_AM_I @ 0x%02X = 0x%02X %s\n", 
-        addr, whoami, whoami == 0x05 ? "OK" : "ERREUR");
-    
-    
-
-    // Calibration du biais gyro : moyenne sur 200 samples à l'arrêt
+    // Calibration du biais gyro — 50 samples au repos
     Serial.printf("[IMU] Calibration biais gyro @ 0x%02X...\n", addr);
     float sx = 0, sy = 0, sz = 0;
-    const int N = 50;
-    for (int i = 0; i < N; i++) {
-        if (_readRaw()) { sx += gx; sy += gy; sz += gz; }
+    int validCount = 0;
+    for (int i = 0; i < 50; i++) {
+        if (_readRaw() && fabsf(gx) < 300.f && fabsf(gy) < 300.f && fabsf(gz) < 300.f) {
+            sx += gx; sy += gy; sz += gz;
+            validCount++;
+        }
         delay(5);
     }
-    _gx_bias = sx / N;
-    _gy_bias = sy / N;
-    _gz_bias = sz / N;
-    Serial.printf("[IMU] Biais gyro: %.3f / %.3f / %.3f °/s\n",
-                  _gx_bias, _gy_bias, _gz_bias);
+    if (validCount < 10) {
+        Serial.printf("[IMU] ERREUR: seulement %d samples valides — capteur non fiable\n", validCount);
+        return false;
+    }
+    _gx_bias = sx / validCount;
+    _gy_bias = sy / validCount;
+    _gz_bias = sz / validCount;
+    Serial.printf("[IMU] Biais gyro: %.3f / %.3f / %.3f °/s\n", _gx_bias, _gy_bias, _gz_bias);
 
-    Serial.printf("[IMU] QMI8658 @ 0x%02X Initialisé\n", addr);
+    _ready = true;
+    Serial.printf("[IMU] QMI8658 @ 0x%02X prêt\n", addr);
     return true;
 }
-    
 
 bool IMU::_readRaw() {
     // Lire accel (0x35)
     Wire.beginTransmission(_addr);
     Wire.write(0x35);
     Wire.endTransmission(false);
-    Wire.requestFrom(_addr, (uint8_t)6);
+    if (Wire.requestFrom(_addr, (uint8_t)6) != 6) return false;
     uint8_t abuf[6];
     for (int i = 0; i < 6; i++) abuf[i] = Wire.read();
 
@@ -102,7 +89,7 @@ bool IMU::_readRaw() {
     Wire.beginTransmission(_addr);
     Wire.write(0x3B);
     Wire.endTransmission(false);
-    Wire.requestFrom(_addr, (uint8_t)6);
+    if (Wire.requestFrom(_addr, (uint8_t)6) != 6) return false;
     uint8_t gbuf[6];
     for (int i = 0; i < 6; i++) gbuf[i] = Wire.read();
 
@@ -124,13 +111,12 @@ bool IMU::_readRaw() {
 }
 
 void IMU::reset() {
-    _filter = MadgwickFilter(); // Réinitialise l'état interne du filtre
+    _filter.reset();  // conserve le beta du constructeur IMU
 }
 
 void IMU::update(float dt) {
     if (!_ready || !_readRaw()) return;
 
-    // Soustraction du biais avant de donner les valeurs au filtre
     gxc = gx - _gx_bias;
     gyc = gy - _gy_bias;
     gzc = gz - _gz_bias;

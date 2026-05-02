@@ -4,44 +4,47 @@
 
 namespace Sensors {
 
-    /**
-     * IMU : Représente un seul capteur QMI8658.
-     * Gère la lecture brute et son propre filtre d'orientation.
-     */
-    class IMU {
-    public:
-        explicit IMU(float beta = 0.033f) : _filter(beta) {}
+/**
+ * IMU : Représente un seul capteur QMI8658.
+ * Gère la lecture brute I2C et son propre filtre Madgwick d'orientation.
+ *
+ * Câblage attendu :
+ *   ADR = GND → adresse 0x6A (IMU_HEEL)
+ *   ADR = VCC → adresse 0x6B (IMU_TOE)
+ */
+class IMU {
+public:
+    // beta Madgwick : 0.033 = défaut stable, 0.1 = correction agressive du biais
+    explicit IMU(float beta = 0.033f) : _filter(beta) {}
 
-        bool begin(uint8_t addr);
-        void update(float dt);
+    bool begin(uint8_t addr);
+    void update(float dt);
+    void reset();
 
-        // Données brutes
-        float ax, ay, az; // Accélération (g)
-        float gx, gy, gz; // Rotation (°/s)
+    // Données brutes (g / °/s)
+    float ax, ay, az;
+    float gx, gy, gz;
 
-        // Orientation filtrée
-        float roll, pitch, yaw;
+    // Données corrigées du biais (°/s)
+    float gxc, gyc, gzc;
 
-        bool isReady() const { return _ready; }
+    // Orientation filtrée (degrés)
+    float roll, pitch, yaw;
 
-        // Définit les offsets à soustraire aux lectures brutes (°/s)
-        void setGyroBias(float x, float y, float z) {
-            _gx_bias = x; _gy_bias = y; _gz_bias = z;
-        }
+    bool isReady() const { return _ready; }
 
-        // Valeurs corrigées (après soustraction du biais)
-        float gxc, gyc, gzc;
+    void setGyroBias(float x, float y, float z) {
+        _gx_bias = x; _gy_bias = y; _gz_bias = z;
+    }
 
-        void reset(); // Remet le filtre d'orientation à zéro
+private:
+    uint8_t        _addr  = 0;
+    bool           _ready = false;
+    MadgwickFilter _filter;
 
-    private:
-        uint8_t        _addr = 0;
-        bool           _ready = false;
-        MadgwickFilter _filter;
+    float _gx_bias = 0.f, _gy_bias = 0.f, _gz_bias = 0.f;
 
-        float _gx_bias = 0.f, _gy_bias = 0.f, _gz_bias = 0.f;
-
-        bool _readRaw();
-    };
+    bool _readRaw();
+};
 
 } // namespace Sensors

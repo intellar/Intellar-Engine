@@ -147,17 +147,17 @@ void setup() {
   Drivers::initLCD(TFT_CS, TFT_DC, TFT_RST, TFT_LED);
   Drivers::loadRobotEyeRes("/image_giant.bin");
   
-  ENGINE_STATE.activeFaceId = 0; // On démarre directement sur le mode "Chat" (0-4)
+  // activeFaceId défaut = 0 (Chat neutre) dans Core/EngineState.h
 
   // if (ENGINE_STATE.animFiles.size() >= 1) {
   //     Drivers::setAnimation(ENGINE_STATE.animFiles[0].c_str(), Drivers::DisplayIndex::LEFT);
   // }
   if (ENGINE_STATE.animFiles.size() >= 1) {
-      // On charge la première animation disponible sur l'écran droit
+      // Droit en dual ; mono-écran lit ce même buffer dans showCatFace (#else LCD.cpp)
       Drivers::setAnimation(ENGINE_STATE.animFiles[0].c_str(), Drivers::DisplayIndex::RIGHT);
   }
 
-  Drivers::Touchpad::init();
+  Interface::Touchpad::init();
   
   // Generate static JSON system manifest
   ENGINE_STATE.sysConfig = "{";
@@ -222,28 +222,35 @@ void loop() {
   ENGINE_STATE.btConnected = Drivers::Bluetooth::isConnected();
   
   if (now - lastTouchUpdate >= TOUCH_UPDATE_MS) {
-      Drivers::Touchpad::update();
+      Interface::Touchpad::update();
       for(int i=0; i<4; i++) {
-          ENGINE_STATE.touchStrengths[i] = Drivers::Touchpad::getStrength(i);
+          ENGINE_STATE.touchStrengths[i] = Interface::Touchpad::getStrength(i);
       }
       lastTouchUpdate = now;
   }
 
   static int persistentFace = 0;
-  int targetCatIndex = persistentFace;
-  int targetSingeIndex = 0;
-
-  if (Drivers::Touchpad::isTouched(0)) { targetCatIndex = 1; targetSingeIndex = 1; }
-  else if (Drivers::Touchpad::isTouched(1)) { targetCatIndex = 2; targetSingeIndex = 2; }
-  else if (Drivers::Touchpad::isTouched(2)) { targetCatIndex = 4; targetSingeIndex = 4; }
-  else if (Drivers::Touchpad::isTouched(3)) { targetCatIndex = 3; targetSingeIndex = 3; }
 
   int btCmd = Drivers::Bluetooth::getReceivedFace();
   if (btCmd != -1 && btCmd >= 0 && btCmd <= 5) {
       persistentFace = btCmd;
-      targetCatIndex = btCmd;
       ENGINE_STATE.activeFaceId = btCmd;
       Serial.printf("CMD BT: Face ID changed to %d\n", btCmd);
+  }
+
+  int targetCatIndex = persistentFace;
+  const int faceNow = ENGINE_STATE.activeFaceId.load();
+  // RobotEye : le touchpad bascule vers une expression Chat (persistant)
+  if (faceNow == 5) {
+      if (Interface::Touchpad::isTouched(0)) { persistentFace = 1; ENGINE_STATE.activeFaceId = 1; targetCatIndex = 1; }
+      else if (Interface::Touchpad::isTouched(1)) { persistentFace = 2; ENGINE_STATE.activeFaceId = 2; targetCatIndex = 2; }
+      else if (Interface::Touchpad::isTouched(2)) { persistentFace = 4; ENGINE_STATE.activeFaceId = 4; targetCatIndex = 4; }
+      else if (Interface::Touchpad::isTouched(3)) { persistentFace = 3; ENGINE_STATE.activeFaceId = 3; targetCatIndex = 3; }
+  } else if (faceNow >= 0 && faceNow <= 4) {
+      if (Interface::Touchpad::isTouched(0)) targetCatIndex = 1;
+      else if (Interface::Touchpad::isTouched(1)) targetCatIndex = 2;
+      else if (Interface::Touchpad::isTouched(2)) targetCatIndex = 4;
+      else if (Interface::Touchpad::isTouched(3)) targetCatIndex = 3;
   }
 
   if (btCmd == 80) ENGINE_STATE.oledShowBars = false;      // Commande via menu : Mode Yeux
@@ -326,7 +333,7 @@ void loop() {
     bool st_oled = (actual_oled_fps > 0);
     bool st_lcd_l = false, st_lcd_r = false, st_touch = false, st_imu = false;
     bool st_tof = Sensors::ToFModule::instance().isAlive(); 
-    bool st_touchpad = Drivers::Touchpad::isDetected(); 
+    bool st_touchpad = Interface::Touchpad::isDetected(); 
     
     int fps_lcd_l = 0;
     int fps_lcd_r = 0;

@@ -109,7 +109,7 @@ namespace Drivers {
                 json = "{\"faces\":[";
                 json += "{\"id\":0,\"name\":\"Chat Neutre\"},{\"id\":1,\"name\":\"Chat Joyeux\"},";
                 json += "{\"id\":2,\"name\":\"Chat Triste\"},{\"id\":3,\"name\":\"Chat Etonne\"},";
-                json += "{\"id\":4,\"name\":\"Chat Colere\"}]}";
+                json += "{\"id\":4,\"name\":\"Chat Colere\"},{\"id\":5,\"name\":\"RobotEye\"}]}";
                 _pCharacteristic->setValue(json.c_str());
                 _pCharacteristic->notify();
                 delay(20);

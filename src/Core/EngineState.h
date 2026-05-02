@@ -6,7 +6,8 @@
 namespace Core {
     struct EngineState {
         // État de l'Interface
-        std::atomic<int> activeFaceId{5}; // 5 = RobotEye
+        // 0–4 Chat/sprite strip, 5 RobotEye TFT; défaut Chat neutre (aligné avec setup)
+        std::atomic<int> activeFaceId{0};
         
         // Données Capteurs (Producteurs)
         volatile uint16_t tofGrid[64] = {0};

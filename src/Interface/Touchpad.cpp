@@ -17,7 +17,7 @@ static bool anyTouchDetected = false;
 /** Detection threshold as percentage of baseline increase */
 static const float TOUCH_THRESHOLD_PERCENT = 0.30f;
 
-namespace Drivers {
+namespace Interface {
     namespace Touchpad {
 
         void init() {
