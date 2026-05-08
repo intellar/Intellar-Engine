@@ -33,8 +33,16 @@ public:
 
     bool isReady() const { return _ready; }
 
+    /** Si true : après lecture brute, inverse ax/ay et gx/gy (rotation 180° dans le plan XY) avant biais et Madgwick. */
+    void setInvertPlanXY(bool enabled) { _invert_plan_xy = enabled; }
+
     void setGyroBias(float x, float y, float z) {
         _gx_bias = x; _gy_bias = y; _gz_bias = z;
+    }
+
+    /** Quaternion Madgwick courant (unitaire), même convention que getRoll/getPitch/getYaw. */
+    void getQuaternion(float& q0, float& q1, float& q2, float& q3) const {
+        _filter.getQuaternion(q0, q1, q2, q3);
     }
 
 private:
@@ -43,6 +51,7 @@ private:
     MadgwickFilter _filter;
 
     float _gx_bias = 0.f, _gy_bias = 0.f, _gz_bias = 0.f;
+    bool            _invert_plan_xy = false;
 
     bool _readRaw();
 };

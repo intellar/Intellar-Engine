@@ -51,24 +51,89 @@ bool IMU::begin(uint8_t addr) {
     // Purge des premiers samples invalides
     for (int i = 0; i < 30; i++) { _readRaw(); delay(5); }
 
-    // Calibration du biais gyro — 50 samples au repos
+    // Calibration du biais gyro — robuste aux mouvements au boot.
+    // Si un biais estimé est irréaliste, on retente plutôt que de valider une mauvaise base.
     Serial.printf("[IMU] Calibration biais gyro @ 0x%02X...\n", addr);
-    float sx = 0, sy = 0, sz = 0;
-    int validCount = 0;
-    for (int i = 0; i < 50; i++) {
-        if (_readRaw() && fabsf(gx) < 300.f && fabsf(gy) < 300.f && fabsf(gz) < 300.f) {
-            sx += gx; sy += gy; sz += gz;
-            validCount++;
+    constexpr int   kGyroCalSamples   = 64;
+    constexpr int   kGyroCalAttempts  = 4;
+    constexpr float kMaxAcceptedBiasDps = 5.0f;
+    constexpr int   kMinValidSamples  = 10;
+
+    bool  biasAccepted = false;
+    int   lastValidCount = 0;
+    float lastBx = 0.f, lastBy = 0.f, lastBz = 0.f;
+
+    for (int attempt = 1; attempt <= kGyroCalAttempts; ++attempt) {
+        float sx = 0.f, sy = 0.f, sz = 0.f;
+        int   validCount = 0;
+
+        for (int i = 0; i < kGyroCalSamples; i++) {
+            if (_readRaw()) {
+                float gxCal = gx;
+                float gyCal = gy;
+                float gzCal = gz;
+
+                // Calibrer le biais gyro dans le même repère que le runtime update().
+                if (_invert_plan_xy) {
+                    gxCal = -gxCal;
+                    gyCal = -gyCal;
+                }
+
+                if (fabsf(gxCal) < 300.f && fabsf(gyCal) < 300.f && fabsf(gzCal) < 300.f) {
+                    sx += gxCal;
+                    sy += gyCal;
+                    sz += gzCal;
+                    validCount++;
+                }
+            }
+            delay(5);
         }
-        delay(5);
+
+        if (validCount < kMinValidSamples) {
+            Serial.printf("[IMU] Tentative %d/%d rejetee: %d samples valides (min %d)\n",
+                attempt, kGyroCalAttempts, validCount, kMinValidSamples);
+            delay(120);
+            continue;
+        }
+
+        const float bx = sx / validCount;
+        const float by = sy / validCount;
+        const float bz = sz / validCount;
+        const float maxAbsBias = max(max(fabsf(bx), fabsf(by)), fabsf(bz));
+
+        lastValidCount = validCount;
+        lastBx = bx;
+        lastBy = by;
+        lastBz = bz;
+
+        if (maxAbsBias <= kMaxAcceptedBiasDps) {
+            _gx_bias = bx;
+            _gy_bias = by;
+            _gz_bias = bz;
+            biasAccepted = true;
+            break;
+        }
+
+        Serial.printf("[IMU] Tentative %d/%d rejetee: biais trop grand (%.3f / %.3f / %.3f °/s)\n",
+            attempt, kGyroCalAttempts, bx, by, bz);
+        delay(120);
     }
-    if (validCount < 10) {
-        Serial.printf("[IMU] ERREUR: seulement %d samples valides — capteur non fiable\n", validCount);
-        return false;
+
+    if (!biasAccepted) {
+        if (lastValidCount < kMinValidSamples) {
+            Serial.printf("[IMU] ERREUR: calibration gyro impossible @ 0x%02X\n", addr);
+            return false;
+        }
+
+        // Compatibilité comportement runtime: conserver la meilleure estimation disponible,
+        // même si elle est élevée, pour éviter un drift encore pire avec biais forcé à 0.
+        _gx_bias = lastBx;
+        _gy_bias = lastBy;
+        _gz_bias = lastBz;
+        Serial.printf("[IMU] ATTENTION: biais eleve conserve (%.3f / %.3f / %.3f °/s) apres %d tentatives\n",
+            lastBx, lastBy, lastBz, kGyroCalAttempts);
     }
-    _gx_bias = sx / validCount;
-    _gy_bias = sy / validCount;
-    _gz_bias = sz / validCount;
+
     Serial.printf("[IMU] Biais gyro: %.3f / %.3f / %.3f °/s\n", _gx_bias, _gy_bias, _gz_bias);
 
     _ready = true;
@@ -77,28 +142,25 @@ bool IMU::begin(uint8_t addr) {
 }
 
 bool IMU::_readRaw() {
-    // Lire accel (0x35)
+    // Rafale 12 octets depuis AX_L (0x35) : accel puis gyro, même instant d’échantillonnage
+    // (auto-incrément CTRL1) — évite deux transactions I2C et désalignement accel/gyro.
     Wire.beginTransmission(_addr);
     Wire.write(0x35);
-    Wire.endTransmission(false);
-    if (Wire.requestFrom(_addr, (uint8_t)6) != 6) return false;
-    uint8_t abuf[6];
-    for (int i = 0; i < 6; i++) abuf[i] = Wire.read();
+    if (Wire.endTransmission(false) != 0) return false;
+    const uint8_t n = Wire.requestFrom(_addr, (uint8_t)12);
+    if (n != 12) {
+        while (Wire.available()) (void)Wire.read();
+        return false;
+    }
+    uint8_t buf[12];
+    for (int i = 0; i < 12; i++) buf[i] = Wire.read();
 
-    // Lire gyro (0x3B)
-    Wire.beginTransmission(_addr);
-    Wire.write(0x3B);
-    Wire.endTransmission(false);
-    if (Wire.requestFrom(_addr, (uint8_t)6) != 6) return false;
-    uint8_t gbuf[6];
-    for (int i = 0; i < 6; i++) gbuf[i] = Wire.read();
-
-    int16_t raw_ax = (int16_t)((uint16_t)abuf[0] | ((uint16_t)abuf[1] << 8));
-    int16_t raw_ay = (int16_t)((uint16_t)abuf[2] | ((uint16_t)abuf[3] << 8));
-    int16_t raw_az = (int16_t)((uint16_t)abuf[4] | ((uint16_t)abuf[5] << 8));
-    int16_t raw_gx = (int16_t)((uint16_t)gbuf[0] | ((uint16_t)gbuf[1] << 8));
-    int16_t raw_gy = (int16_t)((uint16_t)gbuf[2] | ((uint16_t)gbuf[3] << 8));
-    int16_t raw_gz = (int16_t)((uint16_t)gbuf[4] | ((uint16_t)gbuf[5] << 8));
+    int16_t raw_ax = (int16_t)((uint16_t)buf[0] | ((uint16_t)buf[1] << 8));
+    int16_t raw_ay = (int16_t)((uint16_t)buf[2] | ((uint16_t)buf[3] << 8));
+    int16_t raw_az = (int16_t)((uint16_t)buf[4] | ((uint16_t)buf[5] << 8));
+    int16_t raw_gx = (int16_t)((uint16_t)buf[6] | ((uint16_t)buf[7] << 8));
+    int16_t raw_gy = (int16_t)((uint16_t)buf[8] | ((uint16_t)buf[9] << 8));
+    int16_t raw_gz = (int16_t)((uint16_t)buf[10] | ((uint16_t)buf[11] << 8));
 
     ax = raw_ax * ACCEL_SCALE;
     ay = raw_ay * ACCEL_SCALE;
@@ -116,6 +178,13 @@ void IMU::reset() {
 
 void IMU::update(float dt) {
     if (!_ready || !_readRaw()) return;
+
+    if (_invert_plan_xy) {
+        ax = -ax;
+        ay = -ay;
+        gx = -gx;
+        gy = -gy;
+    }
 
     gxc = gx - _gx_bias;
     gyc = gy - _gy_bias;
