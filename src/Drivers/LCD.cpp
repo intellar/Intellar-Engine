@@ -154,6 +154,33 @@ namespace Drivers {
 #endif
     }
 
+    void pushVideo565(DisplayIndex which, const uint16_t* p) {
+        if (!_isInitialized || !p) return;
+#if defined(SCREEN_GC9A01_DUAL)
+        const int  eye = (which == DisplayIndex::LEFT) ? LEFT_EYE : RIGHT_EYE;
+        LGFX_Sprite& spr = _eyeSprites[eye][_backBufferIdx];
+        memcpy(spr.getBuffer(), p, 240 * 240 * sizeof(uint16_t));
+        lgfx::LGFX_Device& tft = (which == DisplayIndex::LEFT) ? _tft_left : _tft_right;
+        _pushDMA(spr, tft);
+        _backBufferIdx = (_backBufferIdx == 0) ? 1 : 0;
+#elif defined(SCREEN_ILI9341)
+        (void)which;
+        LGFX_Sprite& spr = _eyeSprites[RIGHT_EYE][_backBufferIdx];
+        memcpy(spr.getBuffer(), p, 240 * 240 * sizeof(uint16_t));
+        spr.pushSprite(&_tft_right, 40, 0);
+        _backBufferIdx = (_backBufferIdx == 0) ? 1 : 0;
+#elif defined(SCREEN_GC9A01)
+        (void)which;
+        LGFX_Sprite& spr = _eyeSprites[RIGHT_EYE][_backBufferIdx];
+        memcpy(spr.getBuffer(), p, 240 * 240 * sizeof(uint16_t));
+        spr.pushSprite(120, 60);
+        _backBufferIdx = (_backBufferIdx == 0) ? 1 : 0;
+#else
+        (void)which;
+        (void)p;
+#endif
+    }
+
 #if defined(SCREEN_ILI9341) && defined(TOUCH_CS)
 
     /** Mapping XPT2046 → pixels écran. Sur-corriger via build_flags si besoin (voir platformio.ini ili9341). */

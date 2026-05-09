@@ -33,6 +33,8 @@ namespace Drivers {
     void setAnimation(const char* filename, DisplayIndex display = DisplayIndex::LEFT);
     void updateLCD();
     void showCatFace(int leftIndex, int rightIndex);
+    /** Affiche un framebuffer 240×240 RGB565 (Little Endian) sur un œil GC9A01 / TFT droit. */
+    void pushVideo565(DisplayIndex which, const uint16_t* rgb565);
     void loadRobotEyeRes(const char* filename); // Charge l'image de l'œil géant
     void showRobotEyes(float normX, float normY, const uint16_t* grid = nullptr); // Dessine l'œil avec décalage + debug ToF
     /** `image_giant.bin` présent avec la taille attendue pour showRobotEyes */

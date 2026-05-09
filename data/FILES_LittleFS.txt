@@ -1,4 +1,15 @@
-Contenu conseille du dossier `data/` (puis flash FS : `pio run -e gc9a01 -t buildfs && pio run -e gc9a01 -t uploadfs`)
+Dossier `data/` et répertoire `assets/` (à la racine du projet)
+
+- **`data/`** : seul ce dossier est intégré à l’image LittleFS lors de `buildfs` / `uploadfs`.
+  Tout fichier absent de `data/` au moment du build **ne sera pas sur la carte**.
+- **`assets/`** : dépôt local pour les grosses ressources (.bin strips, `image_giant.bin`, etc.)
+  que tu n’embarques pas toujours. Pour un flash : **copie** les fichiers voulus **depuis
+  `assets/` vers `data/`** puis lance `buildfs` + `uploadfs`.
+  Exemple actuel : strips `expression-*.bin` et `image_giant.bin` sont dans `assets/` ;
+  tant qu’ils ne sont pas recopiés dans `data/`, le firmware ne les verra pas sur LittleFS
+  (pas de strip chat listé au boot, pas de RobotEye sans `image_giant.bin` dans `data/`).
+
+Puis flash FS : `pio run -e gc9a01 -t buildfs && pio run -e gc9a01 -t uploadfs`
 
 Firmware gc9a01 : le GPIO rétroéclairage TFT est `-DTFT_BL` dans platformio.ini (valeur par défaut 46).
 Sans le bon GPIO, les deux ronds GC9a01 restent noir même si la logique dessine correctement.
@@ -23,6 +34,14 @@ Sans le bon GPIO, les deux ronds GC9a01 restent noir même si la logique dessine
    avatar.bin, etc. fonctionnent. Evite uniquement les noms "image_giant".
 
 -------------------------------------------------------------------------------
-3) Optionnel hors strip
+3) Vidéos MJPEG (dashboard + commandes BLE 500+)
+   Extensions : *.mjpeg *.mjpg a la RACINE LittleFS, memes regles de nom reserve
+   (ex. pas de "image_giant" dans le nom). Ordre liste : alphabetique du chemin.
+   Format attendu : suite d'images JPEG baseline (chaque frame SOI FF D8 ... EOI FF D9).
+   Encodage conseille : 240x240 px, ~20 fps, -g 1 (une image-cle par frame).
+   Exemple de fichier : animation_chat.mjpeg
+
+-------------------------------------------------------------------------------
+4) Optionnel hors strip
    Tout autre *.bin sera propose au dashboard tant qu'il passe les filtres
    ci-dessus ; il doit quand meme ressembler a une bande drawable (voir driver).

@@ -1,5 +1,6 @@
 #include "Bluetooth.h"
 #include "Core/EngineState.h"
+#include "Drivers/MjpegPlayer.h"
 #include <Arduino.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -135,6 +136,17 @@ namespace Drivers {
                 
                 _pCharacteristic->setValue(json.c_str());
                 _pCharacteristic->notify();
+                delay(20);
+
+                json = "{\"videos\":[";
+                for (size_t i = 0; i < ENGINE_STATE.videoFiles.size(); i++) {
+                    json += "{\"id\":" + String(500 + (int)i) + ",\"name\":\"" + ENGINE_STATE.videoFiles[i] + "\"}";
+                    if (i < ENGINE_STATE.videoFiles.size() - 1) json += ",";
+                }
+                json += "]}";
+                _pCharacteristic->setValue(json.c_str());
+                _pCharacteristic->notify();
+
                 ENGINE_STATE.shouldSendFileList.store(false);
                 return; 
             }
@@ -146,10 +158,13 @@ namespace Drivers {
                 default: oled_mode_notify = 80; break;
             }
 
-            char buffer[256];
-            // Construction du JSON : {"oled":true,"fps_oled":10,...}
-            snprintf(buffer, sizeof(buffer), 
-                "{\"oled\":%s,\"lcd_l\":%s,\"lcd_r\":%s,\"touch\":%s,\"imu\":%s,\"tof\":%s,\"touchpad\":%s,\"fps_oled\":%d,\"fps_lcd_l\":%d,\"fps_lcd_r\":%d,\"face\":%d,\"oled_mode\":%d}",
+            char buffer[420];
+            char speedStr[12];
+            snprintf(speedStr, sizeof(speedStr), "%.1f", (double)Mjpeg::speedMultiplier());
+            snprintf(buffer, sizeof(buffer),
+                "{\"oled\":%s,\"lcd_l\":%s,\"lcd_r\":%s,\"touch\":%s,\"imu\":%s,\"tof\":%s,\"touchpad\":%s,"
+                "\"fps_oled\":%d,\"fps_lcd_l\":%d,\"fps_lcd_r\":%d,\"face\":%d,\"oled_mode\":%d,"
+                "\"video_playing\":%s,\"video_loop\":%s,\"video_speed\":%s}",
                 oled ? "true" : "false",
                 lcd_left ? "true" : "false",
                 lcd_right ? "true" : "false",
@@ -161,7 +176,10 @@ namespace Drivers {
                 fps_lcd_l,
                 fps_lcd_r,
                 ENGINE_STATE.activeFaceId.load(),
-                oled_mode_notify
+                oled_mode_notify,
+                Mjpeg::isPlaying() ? "true" : "false",
+                Mjpeg::loopEnabled() ? "true" : "false",
+                speedStr
             );
 
             _pCharacteristic->setValue(buffer);

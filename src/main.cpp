@@ -5,6 +5,7 @@
 #include "Sensors/ToF.h"
 #include "Drivers/OLED.h"
 #include "Drivers/LCD.h"
+#include "Drivers/MjpegPlayer.h"
 #include "Drivers/Bluetooth.h"
 #include "Interface/Touchpad.h"
 #include "Interface/RobotEye.h"
@@ -34,6 +35,13 @@ static void sortAnimFilesStable() {
         bool pa = preferExpressionFilename(a);
         bool pb = preferExpressionFilename(b);
         if (pa != pb) return pa && !pb;
+        return strcmp(a.c_str(), b.c_str()) < 0;
+    });
+}
+
+static void sortVideoFilesStable() {
+    auto& v = ENGINE_STATE.videoFiles;
+    std::stable_sort(v.begin(), v.end(), [](const String& a, const String& b) {
         return strcmp(a.c_str(), b.c_str()) < 0;
     });
 }
@@ -147,24 +155,34 @@ void setup() {
       File file = root.openNextFile();
       while(file){
           String fname = file.name();
-          if (!fname.endsWith(".bin")) {
+          String low = fname;
+          low.toLowerCase();
+
+          bool isBin = fname.endsWith(".bin");
+          bool isVideo = fname.endsWith(".mjpeg") || fname.endsWith(".mjpg");
+          if (!isBin && !isVideo) {
               file = root.openNextFile();
               continue;
           }
-          String low = fname;
-          low.toLowerCase();
           if (fileNameReserved(low)) {
               file = root.openNextFile();
               continue;
           }
           if (!fname.startsWith("/")) fname = "/" + fname;
-          ENGINE_STATE.animFiles.push_back(fname);
-          Serial.printf("INFO: Fichier strip/anim: %s\n", fname.c_str());
+          if (isBin) {
+              ENGINE_STATE.animFiles.push_back(fname);
+              Serial.printf("INFO: Fichier strip/anim: %s\n", fname.c_str());
+          } else {
+              ENGINE_STATE.videoFiles.push_back(fname);
+              Serial.printf("INFO: Fichier video MJPEG: %s\n", fname.c_str());
+          }
           file = root.openNextFile();
       }
       sortAnimFilesStable();
+      sortVideoFilesStable();
       Serial.printf("INFO: Strip TFT: %u fichier(s); ordre trie (expression puis A-Z).\n",
                     (unsigned)ENGINE_STATE.animFiles.size());
+      Serial.printf("INFO: Videos MJPEG: %u fichier(s).\n", (unsigned)ENGINE_STATE.videoFiles.size());
   }
 
 
@@ -192,6 +210,17 @@ void setup() {
       Drivers::setAnimation(first, Drivers::DisplayIndex::RIGHT);
   } else {
       Serial.println("WARN: Aucun .bin strip dans LittleFS → visages TFT inactifs. Voir data/FILES_LittleFS.txt + uploadfs.");
+  }
+
+  if (!ENGINE_STATE.videoFiles.empty()) {
+      const char* vpath = ENGINE_STATE.videoFiles[0].c_str();
+      /** LEFT = TFT “robot anatomique gauche” = côté droit vu par quelqu’un en face du robot ; RIGHT inverse. */
+      if (Drivers::Mjpeg::play(0, Drivers::DisplayIndex::LEFT)) {
+          Serial.printf("INFO: MJPEG lecture par défaut: %s (œil anatomique gauche / écran vu à droite)\n",
+                        vpath);
+      } else {
+          Serial.printf("WARN: MJPEG par défaut impossible (%s)\n", vpath);
+      }
   }
 
   Interface::Touchpad::init();
@@ -329,6 +358,29 @@ void loop() {
           ENGINE_STATE.lcdExprLeft = 0;
       }
   }
+  else if (btCmd >= 500 && btCmd < 520) {
+      int idx = btCmd - 500;
+      if (idx >= 0 && idx < (int)ENGINE_STATE.videoFiles.size()) {
+          Drivers::Mjpeg::play((size_t)idx, Drivers::DisplayIndex::LEFT);
+      }
+  }
+  else if (btCmd >= 520 && btCmd < 540) {
+      int idx = btCmd - 520;
+      if (idx >= 0 && idx < (int)ENGINE_STATE.videoFiles.size()) {
+          Drivers::Mjpeg::play((size_t)idx, Drivers::DisplayIndex::RIGHT);
+      }
+  }
+  else if (btCmd == 540 || btCmd == 541 || btCmd == 542) {
+      Drivers::Mjpeg::setSpeedCommand(btCmd);
+  }
+  else if (btCmd == 598) {
+      Drivers::Mjpeg::stop();
+  }
+  else if (btCmd == 599) {
+      Drivers::Mjpeg::toggleLoop();
+  }
+
+  Drivers::Mjpeg::service(millis());
 
   // Main display refresh logic (Target: 30 FPS)
   if (lastRefresh == 0) lastRefresh = now;
@@ -340,7 +392,9 @@ void loop() {
       const bool wantRobot = (fid == 5);
       const bool wantChat = (fid >= 0 && fid <= 4);
 
-      if (wantRobot && Drivers::isRobotEyeResourceReady()) {
+      if (Drivers::Mjpeg::isPlaying()) {
+          /* Frames poussées dans Mjpeg::service() */
+      } else if (wantRobot && Drivers::isRobotEyeResourceReady()) {
           float tx_eye, ty_eye;
           bool valid = Sensors::ToFModule::getToFTarget(tx_eye, ty_eye);
           robotEyeLogic.update(tx_eye, ty_eye, valid);

@@ -30,6 +30,7 @@ namespace Core {
         
         // Assets et Config
         std::vector<String> animFiles;
+        std::vector<String> videoFiles;
         String sysConfig = "{}";
 
         // Commandes OLED
