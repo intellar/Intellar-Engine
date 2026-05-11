@@ -33,6 +33,16 @@ public:
 
     bool isReady() const { return _ready; }
 
+    /** Adresse I2C QMI8658 (ex. 0x6A / 0x6B) après begin(). */
+    uint8_t address() const { return _addr; }
+
+    /** Biais gyro estimé au boot (°/s), soustrait dans update() pour produire gxc,gyc,gzc. */
+    void getGyroBias(float& bx, float& by, float& bz) const {
+        bx = _gx_bias;
+        by = _gy_bias;
+        bz = _gz_bias;
+    }
+
     /** Si true : après lecture brute, inverse ax/ay et gx/gy (rotation 180° dans le plan XY) avant biais et Madgwick. */
     void setInvertPlanXY(bool enabled) { _invert_plan_xy = enabled; }
 
