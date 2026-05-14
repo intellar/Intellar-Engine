@@ -50,6 +50,16 @@ public:
         _gx_bias = x; _gy_bias = y; _gz_bias = z;
     }
 
+    /**
+     * Active le beta adaptatif sur le filtre Madgwick interne. Voir
+     * MadgwickFilter::enableAdaptiveBeta() pour la sémantique.
+     * Utile en snowboard pour ignorer l'accéléromètre quand la planche tourne.
+     */
+    void enableAdaptiveBeta(float low_beta = 0.02f, float high_beta = 0.10f,
+                            float low_omega_dps = 5.f, float high_omega_dps = 30.f) {
+        _filter.enableAdaptiveBeta(low_beta, high_beta, low_omega_dps, high_omega_dps);
+    }
+
     /** Quaternion Madgwick courant (unitaire), même convention que getRoll/getPitch/getYaw. */
     void getQuaternion(float& q0, float& q1, float& q2, float& q3) const {
         _filter.getQuaternion(q0, q1, q2, q3);

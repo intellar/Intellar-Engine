@@ -15,14 +15,58 @@ public:
     // Valeurs typiques : 0.033 (stable/lent) à 0.1 (réactif/snowboard)
     // Plus grand = plus de correction accel, moins de drift gyro, mais plus de bruit
     explicit MadgwickFilter(float beta = 0.05f)
-        : _beta(beta), _q0(1.f), _q1(0.f), _q2(0.f), _q3(0.f) {}
+        : _beta(beta), _beta_base(beta),
+          _adaptive(false),
+          _q0(1.f), _q1(0.f), _q2(0.f), _q3(0.f) {}
 
-    void setBeta(float beta) { _beta = beta; }
+    void setBeta(float beta) { _beta = beta; _beta_base = beta; }
+
+    /**
+     * Mode beta adaptatif : en virage (|gz| élevé) on baisse beta pour faire
+     * davantage confiance au gyro et ignorer l'accéléro bruité par les
+     * vibrations / forces centripètes. En straight, on remonte beta pour
+     * recaler l'orientation sur la gravité.
+     *
+     * @param low_beta   ex. 0.02 - utilisé quand |gz| > high_omega_dps
+     * @param high_beta  ex. 0.10 - utilisé quand |gz| < low_omega_dps
+     * @param low_omega_dps   borne basse (deg/s) — ex. 5
+     * @param high_omega_dps  borne haute (deg/s) — ex. 30
+     * Entre les deux on interpole linéairement.
+     */
+    void enableAdaptiveBeta(float low_beta, float high_beta,
+                            float low_omega_dps, float high_omega_dps) {
+        _adaptive = true;
+        _beta_lo  = low_beta;
+        _beta_hi  = high_beta;
+        _omega_lo = low_omega_dps;
+        _omega_hi = high_omega_dps;
+    }
+
+    void disableAdaptiveBeta() { _adaptive = false; _beta = _beta_base; }
+
+    /** Recalcule _beta selon |omega| courant si adaptatif activé. */
+    void _adaptBetaIfNeeded(float gx, float gy, float gz) {
+        if (!_adaptive) return;
+        // Magnitude angulaire totale (deg/s). Note : on travaille en deg/s
+        // au moment de l'appel, pas en rad/s (cf. update() qui convertit ensuite).
+        const float omega = sqrtf(gx*gx + gy*gy + gz*gz);
+        if (omega >= _omega_hi) {
+            _beta = _beta_lo;
+        } else if (omega <= _omega_lo) {
+            _beta = _beta_hi;
+        } else {
+            const float t = (omega - _omega_lo) / (_omega_hi - _omega_lo);
+            _beta = _beta_hi + t * (_beta_lo - _beta_hi);
+        }
+    }
 
     // Mise à jour principale — appeler à chaque sample IMU
     // gx/gy/gz : degrés/seconde  |  ax/ay/az : g (non normalisé)
     void update(float gx, float gy, float gz,
                 float ax, float ay, float az, float dt) {
+
+        // Adapter beta selon la magnitude angulaire AVANT conversion rad/s.
+        _adaptBetaIfNeeded(gx, gy, gz);
 
         // Gyro en rad/s
         gx *= DEG_TO_RAD;
@@ -114,7 +158,11 @@ private:
     //static constexpr float DEG_TO_RAD = 0.017453292519943f;
     //static constexpr float RAD_TO_DEG = 57.295779513082f;
 
-    float _beta;
+    float _beta;        // beta courant (peut être adapté chaque update)
+    float _beta_base;   // beta défini par l'utilisateur via setBeta / ctor
+    bool  _adaptive;
+    float _beta_lo = 0.02f, _beta_hi = 0.10f;
+    float _omega_lo = 5.f,  _omega_hi = 30.f;
     float _q0, _q1, _q2, _q3;
 
     void _integrateGyroOnly(float gx, float gy, float gz, float dt) {
