@@ -8,6 +8,13 @@ namespace Mjpeg {
 
 bool isPlaying();
 bool loopEnabled();
+/** Active/désactive la boucle explicitement (préférable à toggleLoop). */
+void setLoop(bool enabled);
+/**
+ * Vrai UNE seule fois après la fin naturelle d'un clip non bouclé.
+ * Le drapeau est consommé par l'appel (remis à false) ; réarmé par play().
+ */
+bool takeFinished();
 uint8_t speedIndex(); // 0 = 0.5×, 1 = 1×, 2 = 1.5×
 float speedMultiplier();
 

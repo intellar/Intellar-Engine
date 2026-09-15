@@ -214,6 +214,7 @@ void setup() {
 
   if (!ENGINE_STATE.videoFiles.empty()) {
       const char* vpath = ENGINE_STATE.videoFiles[0].c_str();
+      Drivers::Mjpeg::setLoop(true);  // demo Engine : clip de boot en boucle (comportement historique)
       /** LEFT = TFT “robot anatomique gauche” = côté droit vu par quelqu’un en face du robot ; RIGHT inverse. */
       if (Drivers::Mjpeg::play(0, Drivers::DisplayIndex::LEFT)) {
           Serial.printf("INFO: MJPEG lecture par défaut: %s (œil anatomique gauche / écran vu à droite)\n",

@@ -13,7 +13,7 @@ namespace {
 
 static constexpr size_t kJpegStagingMax = 400 * 1024;
 static constexpr int kCanvas        = 240;
-static constexpr int kNominalFps    = 20;
+static constexpr int kNominalFps    = 15;  // aligné sur les clips MJPEG (ffmpeg -r 15)
 /** Limite JPEG (px) pour buffer raster décodé (~PSRAM). */
 static constexpr int kJpegDecodeMaxSide = 512;
 
@@ -27,7 +27,8 @@ int       g_natStride  = 0;
 int       g_natHeight  = 0;
 
 bool      g_playing    = false;
-bool      g_loop       = true;
+bool      g_loop       = false;  // one-shot par défaut ; boucle via setLoop(true)
+bool      g_finished   = false;  // fin naturelle d'un clip non bouclé (drainé par takeFinished)
 uint8_t   g_speedIdx   = 1; // 1×
 DisplayIndex g_side    = DisplayIndex::RIGHT;
 unsigned long g_lastFrameMs = 0;
@@ -237,6 +238,14 @@ bool isPlaying() { return g_playing; }
 
 bool loopEnabled() { return g_loop; }
 
+void setLoop(bool enabled) { g_loop = enabled; }
+
+bool takeFinished() {
+    if (!g_finished) return false;
+    g_finished = false;
+    return true;
+}
+
 uint8_t speedIndex() { return g_speedIdx; }
 
 float speedMultiplier() {
@@ -271,6 +280,7 @@ bool play(size_t videoIndex, DisplayIndex target) {
         return false;
     }
     stop();
+    g_finished      = false;  // nouveau clip : drapeau de fin réarmé
     const char* path = ENGINE_STATE.videoFiles[videoIndex].c_str();
     g_file           = LittleFS.open(path, "r");
     if (!g_file) {
@@ -310,6 +320,7 @@ void service(uint32_t nowMs) {
         }
         if (n == 0) {
             Serial.println("Mjpeg: fin / erreur flux");
+            g_finished = true;  // fin naturelle : signalée via takeFinished()
             stop();
             return;
         }
