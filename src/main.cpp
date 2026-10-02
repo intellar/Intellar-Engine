@@ -11,6 +11,9 @@
 #include "Interface/RobotEye.h"
 #include "Interface/display_wrapper.h"
 #include "Interface/eye_animation.h"
+#ifdef HAS_ISKA
+#include "Iska/IskaDemo.h"
+#endif
 #include <SPI.h>
 #include <Wire.h>
 #include <freertos/FreeRTOS.h>
@@ -145,6 +148,14 @@ void i2cTask(void *pvParameters) {
 }
 
 void setup() {
+#ifdef HAS_ISKA
+  // ISKA demo: play the first *.iska on LittleFS, then skip the full engine demo.
+  Core::init(I2C_SDA, I2C_SCL);
+  LittleFS.begin();
+  Drivers::initLCD(TFT_CS, TFT_DC, TFT_RST, TFT_LED);
+  Engine::IskaDemo::begin(Drivers::getTFT());
+  return;
+#endif
   Core::init(I2C_SDA, I2C_SCL); // Note: Serial.begin is already inside Core::init
 
   if(!LittleFS.begin()){
@@ -279,6 +290,12 @@ void setup() {
 }
 
 void loop() {
+#ifdef HAS_ISKA
+  Engine::IskaDemo::update(FRAME_DELAY_MS);
+  Engine::IskaDemo::render();
+  delay(FRAME_DELAY_MS);
+  return;
+#endif
   static int frameCount = 0;
   static unsigned long lastFpsTime = 0;
   static unsigned long lastTouchUpdate = 0;
